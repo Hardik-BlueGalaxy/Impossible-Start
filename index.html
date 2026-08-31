@@ -47,6 +47,10 @@
   #fps{position:fixed;top:64px;left:50%;transform:translateX(-50%);z-index:7;color:#7fd;
     font-size:10px;letter-spacing:2px;opacity:.6;display:none;}
   #fps.show{display:block;}
+  #save-status{position:fixed;top:92px;left:50%;transform:translateX(-50%);z-index:7;
+    color:var(--cyan);font-size:9px;letter-spacing:2px;opacity:0;pointer-events:none;
+    transition:opacity .25s;text-shadow:0 0 8px var(--cyan);}
+  #save-status.show{opacity:.8;}
 
   #lives{position:fixed;bottom:26px;left:50%;transform:translateX(-50%);z-index:6;
     display:flex;gap:8px;pointer-events:none;}
@@ -132,8 +136,35 @@
     .hud-value{font-size:17px;}
     .range{width:96px;}
   }
+
+  /* MOBILE CONTROL UPGRADE */
+  @media (max-width:600px){
+    #mobile-joystick{width:156px!important;height:156px!important;bottom:28px!important;left:24px!important;right:auto!important;border-radius:50%;opacity:.96;}
+    #joystick-knob{width:68px!important;height:68px!important;margin:-34px 0 0 -34px!important;}
+  }
+  #mobile-joystick.floating{display:block;position:fixed;z-index:30;transform:none;transition:none;touch-action:none;}
+
+  #mobile-help{position:fixed;left:50%;bottom:12px;transform:translateX(-50%);z-index:31;padding:7px 12px;border:1px solid rgba(53,231,255,.22);border-radius:999px;background:rgba(5,8,18,.72);backdrop-filter:blur(8px);color:rgba(232,244,255,.72);font:700 9px/1 monospace;letter-spacing:1.5px;pointer-events:none;display:none;}
+  @media (max-width:600px){#mobile-help{display:block;} body.mobile-playing #mobile-help{display:block;} }
 </style>
-</head>
+
+<style id="online-features-css">
+#online-bar{margin:14px 0 0;color:#7fd;font-size:11px;letter-spacing:1.5px;min-height:18px}
+.online-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:14px}
+.online-btn{appearance:none;border:1px solid rgba(53,231,255,.35);background:rgba(53,231,255,.04);color:var(--cyan);padding:11px 10px;font:inherit;font-size:11px;letter-spacing:2px;cursor:pointer}
+.online-btn:hover{background:rgba(53,231,255,.1)}
+.online-card{margin-top:12px;border:1px solid rgba(53,231,255,.18);padding:12px;text-align:left;max-height:300px;overflow:auto}
+.online-row{display:flex;justify-content:space-between;gap:12px;padding:8px 4px;border-bottom:1px solid rgba(255,255,255,.06);font-size:11px}
+.online-row:last-child{border-bottom:0}.online-rank{width:28px;opacity:.6}.online-name{flex:1}.online-score{color:var(--amber);font-weight:bold}
+#nickname-screen .panel{max-width:430px}.online-input{width:100%;padding:13px;background:rgba(0,0,0,.3);border:1px solid rgba(53,231,255,.35);color:var(--cyan);font:inherit;outline:none;text-align:center;letter-spacing:2px}
+.online-note{font-size:10px;color:#718694;line-height:1.7;margin:12px 0}.online-status{font-size:10px;color:#8fb3c4;margin-top:8px;min-height:16px}
+.friend-actions{display:flex;gap:6px}.friend-actions button{padding:6px 8px;font:inherit;font-size:9px}
+#daily-badge{color:var(--amber);font-size:11px;letter-spacing:2px;margin-top:8px}
+@media(max-width:600px){.online-grid{grid-template-columns:1fr 1fr}.online-btn{padding:13px 6px}.online-card{max-height:34vh}}
+</style>
+
+<style id="isx-visibility-fix">\n/* High-contrast readability + achievement notifications */\n:root{--isx-text:#f3f7ff;--isx-muted:#b8c7d9;--isx-dim:#91a5ba}\nbody,.screen,.panel,.set-section,.set-row,.controls-hint,.tagline,.best-line,.stat,.stat-row,.online-note,.online-status,.set-label,.set-section h3{color:var(--isx-text)}\n.tagline,.controls-hint,.online-note,.set-label,.set-section h3{text-shadow:0 1px 2px rgba(0,0,0,.75)}\n.set-label,.online-note,.controls-hint{color:#e1e9f4}\n.isx-muted{color:#b9c8da!important}\n.isx-note,.isx-box p{color:#d3deeb!important}\ninput,select,textarea,.isx-input,.online-input{color:#f5f9ff!important}\ninput::placeholder,.isx-input::placeholder,.online-input::placeholder{color:#9fb0c3!important;opacity:1}\nbutton,.ghost,.online-btn,.action{color:#f5f9ff}\nbutton[data-value].active,.seg button.active{color:#fff!important}\n#isx-ach-toast-wrap{position:fixed;top:22px;right:22px;z-index:10000;display:flex;flex-direction:column;gap:10px;width:min(360px,calc(100vw - 32px));pointer-events:none}\n.isx-ach-toast{pointer-events:none;display:flex;align-items:center;gap:12px;padding:13px 15px;border:1px solid rgba(53,231,255,.55);border-radius:12px;background:linear-gradient(135deg,rgba(9,18,34,.97),rgba(20,12,38,.97));box-shadow:0 12px 35px rgba(0,0,0,.45),0 0 22px rgba(53,231,255,.13);animation:isxAchIn .28s ease-out both,isxAchOut .35s ease-in 3.65s both;color:#f7fbff}\n.isx-ach-icon{width:36px;height:36px;display:grid;place-items:center;border-radius:10px;background:rgba(255,206,74,.14);border:1px solid rgba(255,206,74,.38);color:#ffdc68;font-size:19px;flex:none}\n.isx-ach-toast .t1{font-size:10px;letter-spacing:2px;color:#8feeff;font-weight:800}\n.isx-ach-toast .t2{font-size:14px;letter-spacing:1px;color:#fff;font-weight:800;margin-top:2px}\n.isx-ach-toast .t3{font-size:10px;color:#c5d3e3;margin-top:3px}\n@keyframes isxAchIn{from{opacity:0;transform:translateX(35px) scale(.97)}to{opacity:1;transform:none}}\n@keyframes isxAchOut{to{opacity:0;transform:translateX(35px)}}\n@media(max-width:600px){#isx-ach-toast-wrap{top:12px;right:12px;width:calc(100vw - 24px)}.isx-ach-toast{padding:12px}.isx-ach-toast .t2{font-size:13px}}
+</style>\n</head>
 <body>
 
 <div id="canvas-wrap"></div>
@@ -157,8 +188,10 @@
 
 <button id="pause-btn">II</button>
 <div id="fps">0 FPS</div>
+<div id="save-status">SAVED</div>
 
 <div id="mobile-joystick" aria-label="Movement joystick"><div id="joystick-knob"></div></div>
+<div id="mobile-help">DRAG ANYWHERE TO MOVE</div>
 <div id="lives"></div>
 
 <div id="resonance-wrap">
@@ -185,7 +218,44 @@
     <div class="menu-row">
       <button class="action" id="btn-start">ENGAGE</button>
     </div>
+    <div id="daily-badge">DAILY RUN • SAME SEED FOR EVERYONE</div>
+    <div id="online-bar">OFFLINE PROFILE</div>
+    <div class="online-grid">
+      <button class="online-btn" id="btn-daily">DAILY RUN</button>
+      <button class="online-btn" id="btn-leaderboard">LEADERBOARD</button>
+      <button class="online-btn" id="btn-friends">FRIENDS</button>
+      <button class="online-btn" id="btn-duels">DUELS</button>
+    </div>
+    <div class="online-grid extra-tools">
+      <button class="online-btn" id="btn-stats">STATISTICS</button>
+      <button class="online-btn" id="btn-achievements">ACHIEVEMENTS</button>
+      <button class="online-btn" id="btn-practice">PRACTICE</button>
+      <button class="online-btn" id="btn-daily-challenge">CHALLENGES</button>
+    </div>
     <button class="ghost" id="btn-open-settings">&#9881; SETTINGS</button>
+  </div>
+</div>
+
+
+<!-- ONLINE IDENTITY / FEATURES -->
+<div class="screen hidden" id="nickname-screen">
+  <div class="panel corner-frame">
+    <span class="tick tl"></span><span class="tick tr"></span><span class="tick bl"></span><span class="tick br"></span>
+    <h1 style="font-size:28px;letter-spacing:7px;">IDENTITY</h1>
+    <div class="tagline">CREATE YOUR NICKNAME</div>
+    <div class="online-note">Your device gets a private game ID. No password or traditional login is required. Your nickname must be unique.</div>
+    <input id="nickname-input" class="online-input" maxlength="16" autocomplete="off" placeholder="ENTER NICKNAME">
+    <div id="nickname-status" class="online-status"></div>
+    <div class="menu-row"><button class="action" id="btn-save-nickname">CONFIRM</button></div>
+  </div>
+</div>
+
+<div class="screen hidden" id="online-screen">
+  <div class="panel corner-frame" style="width:min(720px,94vw)">
+    <span class="tick tl"></span><span class="tick tr"></span><span class="tick bl"></span><span class="tick br"></span>
+    <h1 id="online-title" style="font-size:25px;letter-spacing:6px;">ONLINE</h1>
+    <div id="online-content"></div>
+    <button class="ghost" id="btn-online-back">BACK</button>
   </div>
 </div>
 
@@ -261,6 +331,11 @@
           <button data-value="zones">ZONES</button>
         </div>
       </div>
+      <div class="set-row"><span class="set-label">Joystick Size</span><input type="range" id="s-joystickSize" class="range" min="110" max="210" step="5"></div>
+      <div class="set-row"><span class="set-label">Joystick Sensitivity</span><input type="range" id="s-joystickSensitivity" class="range" min="0.5" max="1.8" step="0.1"></div>
+      <div class="set-row"><span class="set-label">Joystick Deadzone</span><input type="range" id="s-joystickDeadzone" class="range" min="0" max="0.35" step="0.01"></div>
+      <div class="set-row"><span class="set-label">Joystick Position</span><div class="seg" id="seg-joystickPosition"><button data-value="bottom-left">LEFT</button><button data-value="bottom-right">RIGHT</button><button data-value="floating">FLOAT</button></div></div>
+      <div class="set-row"><span class="set-label">Handedness</span><div class="seg" id="seg-joystickHandedness"><button data-value="left">LEFT</button><button data-value="right">RIGHT</button></div></div>
     </div>
 
     <div class="set-section">
@@ -342,7 +417,7 @@
       <div class="set-row"><span class="set-label">Best score, stats and settings save automatically. Soundtrack: BLUE START.</span></div>
       <div class="menu-row" style="flex-wrap:wrap;">
         <button class="ghost" id="btn-reset-settings">RESET SETTINGS</button>
-        <button class="ghost" id="btn-reset-data">RESET ALL DATA</button>
+        <button class="ghost" id="btn-reset-data">RESET PROGRESS</button>
       </div>
       <div class="menu-row">
         <button class="ghost" id="btn-fullscreen">FULLSCREEN</button>
@@ -390,7 +465,7 @@
     sensitivity:1.0, invertY:false, touchMode:'drag', theme:'nova',
     shakeIntensity:'high', hitFlash:true, fovPulse:true, trailDensity:'med',
     starDensity:'med', showFps:false, reducedMotion:false, haptics:true, showGuideRing:true,
-    gateChaos:false, speedSurge:false, perfectRun:false, musicRate:1
+    gateChaos:false, speedSurge:false, perfectRun:false, musicRate:1, joystickSize:156, joystickSensitivity:1, joystickDeadzone:0.12, joystickPosition:'bottom-left', joystickHandedness:'left'
   };
   var settings = Object.assign({}, DEFAULT_SETTINGS);
   var stats = {best:0, gamesPlayed:0, totalDistance:0};
@@ -525,13 +600,29 @@
     try{
       blueStartAudio.playbackRate = parseFloat(settings.musicRate)||1;
       blueStartAudio.volume = Math.max(0, Math.min(1, settings.musicVol));
+      if(!blueStartAudio.paused && !blueStartAudio.ended) return;
       var promise = blueStartAudio.play();
       if(promise && promise.catch) promise.catch(function(){});
     }catch(e){}
   }
 
+  // Pause without resetting the track position. This lets music survive
+  // opening Settings, pausing, returning to the menu, etc.
+  function pauseMusic(){
+    try{ blueStartAudio.pause(); }catch(e){}
+  }
+  function resumeMusic(){
+    if(!settings.musicOn) return;
+    try{
+      blueStartAudio.playbackRate = parseFloat(settings.musicRate)||1;
+      blueStartAudio.volume = Math.max(0, Math.min(1, settings.musicVol));
+      var promise = blueStartAudio.play();
+      if(promise && promise.catch) promise.catch(function(){});
+    }catch(e){}
+  }
   function stopMusic(){
-    try{ blueStartAudio.pause(); blueStartAudio.currentTime = 0; }catch(e){}
+    // Full stop is only used when the player explicitly quits/resets audio.
+    pauseMusic();
   }
 
   function updateMusicVolume(){
@@ -544,32 +635,92 @@
   }
 
   // ---------------- persistent storage ----------------
+  // Save to normal browser localStorage so the standalone HTML file remembers
+  // the best score and settings after closing/reopening the game. If the host
+  // provides window.storage, we also mirror the same data there.
+  var SAVE_KEY = 'impossible-start:data:v2';
+  function readLocalData(){
+    try{
+      var raw = window.localStorage.getItem(SAVE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    }catch(e){ return null; }
+  }
+  function writeLocalData(data){
+    try{ window.localStorage.setItem(SAVE_KEY, JSON.stringify(data)); }catch(e){}
+  }
+  function applyLoadedData(data){
+    if(!data || typeof data !== 'object') return;
+    if(data.settings && typeof data.settings === 'object'){
+      Object.keys(DEFAULT_SETTINGS).forEach(function(k){
+        if(Object.prototype.hasOwnProperty.call(data.settings,k)) settings[k]=data.settings[k];
+      });
+    }
+    if(data.stats && typeof data.stats === 'object'){
+      if(Number.isFinite(Number(data.stats.best))) stats.best=Math.max(0,Math.floor(Number(data.stats.best)));
+      if(Number.isFinite(Number(data.stats.gamesPlayed))) stats.gamesPlayed=Math.max(0,Math.floor(Number(data.stats.gamesPlayed)));
+      if(Number.isFinite(Number(data.stats.totalDistance))) stats.totalDistance=Math.max(0,Math.floor(Number(data.stats.totalDistance)));
+    }
+  }
   function loadData(){
-    if(typeof window.storage === 'undefined'){ afterLoad(); return; }
-    window.storage.get('resonance:data', false).then(function(res){
-      if(res && res.value){
-        try{
-          var data = JSON.parse(res.value);
-          if(data.settings) Object.assign(settings, data.settings);
-          if(data.stats) Object.assign(stats, data.stats);
-        }catch(e){}
-      }
+    var localData = readLocalData();
+    applyLoadedData(localData);
+    if(typeof window.storage !== 'undefined' && window.storage && typeof window.storage.get === 'function'){
+      try{
+        window.storage.get('resonance:data', false).then(function(res){
+          if(res && res.value){
+            try{
+              var hostData = JSON.parse(res.value);
+              // Prefer whichever stored best score is higher, while still loading settings.
+              if(hostData && hostData.stats && Number(hostData.stats.best) > stats.best) stats.best=Math.floor(Number(hostData.stats.best));
+              if(hostData && hostData.stats && Number(hostData.stats.gamesPlayed) > stats.gamesPlayed) stats.gamesPlayed=Math.floor(Number(hostData.stats.gamesPlayed));
+              if(hostData && hostData.stats && Number(hostData.stats.totalDistance) > stats.totalDistance) stats.totalDistance=Math.floor(Number(hostData.stats.totalDistance));
+              if(!localData && hostData && hostData.settings) applyLoadedData(hostData);
+            }catch(e){}
+          }
+          writeLocalData({settings:settings, stats:stats});
+          afterLoad();
+        }).catch(function(){ afterLoad(); });
+      }catch(e){ afterLoad(); }
+    } else {
       afterLoad();
-    }).catch(function(){ afterLoad(); });
+    }
   }
   function afterLoad(){
     applySettingsToUI();
     applyAllSettingsLive();
-    document.getElementById('menu-best').textContent = stats.best;
+    document.getElementById('menu-best').textContent = Math.floor(stats.best);
   }
   var saveTimer = null;
   function saveData(){
-    if(typeof window.storage === 'undefined') return;
+    var data = {settings:settings, stats:stats, savedAt:Date.now()};
+    try{
+      var saveEl=document.getElementById('save-status');
+      if(saveEl){
+        saveEl.classList.add('show');
+        clearTimeout(saveEl._hideTimer);
+        saveEl._hideTimer=setTimeout(function(){saveEl.classList.remove('show');},900);
+      }
+    }catch(e){}
+    // localStorage is synchronous and works in ordinary Chrome/Edge/Firefox HTML files.
+    writeLocalData(data);
     clearTimeout(saveTimer);
     saveTimer = setTimeout(function(){
-      window.storage.set('resonance:data', JSON.stringify({settings:settings, stats:stats}), false).catch(function(){});
-    }, 350);
+      if(typeof window.storage !== 'undefined' && window.storage && typeof window.storage.set === 'function'){
+        try{ window.storage.set('resonance:data', JSON.stringify(data), false).catch(function(){}); }catch(e){}
+      }
+    }, 150);
   }
+
+  // Persist immediately when the browser/tab is backgrounded or closed.
+  document.addEventListener('visibilitychange', function(){
+    if(document.hidden){
+      saveData();
+      if(state==='playing') pauseMusic();
+    } else if(state==='playing' && settings.musicOn){
+      resumeMusic();
+    }
+  });
+  window.addEventListener('beforeunload', function(){ saveData(); });
 
   // ---------------- game state ----------------
   var state = 'menu';
@@ -583,14 +734,23 @@
   var clock = new THREE.Clock();
   var fpsAvg = 60;
   var settingsReturnTo = 'menu';
+  var seededRng = null;
+  window.__ISX_SET_SEED=function(seed){ window.__ISX_DAILY_SEED=seed||null; };
+  window.__ISX_CLEAR_SEED=function(){ window.__ISX_DAILY_SEED=null; };
+  function gameRandom(){ return seededRng ? seededRng() : Math.random(); }
+  function hashSeed(text){
+    var h=2166136261; for(var i=0;i<text.length;i++){ h ^= text.charCodeAt(i); h=Math.imul(h,16777619); }
+    return h>>>0;
+  }
+  function mulberry32(a){ return function(){ a|=0; a=(a+0x6D2B79F5)|0; var t=Math.imul(a^(a>>>15),1|a); t=(t+Math.imul(t^(t>>>7),61|t))^t; return ((t^(t>>>14))>>>0)/4294967296; }; }
 
   function makeWall(z){
     var holeR = holeRadius;
-    var a = Math.random()*TWO_PI;
-    if(settings.gateChaos) a += (Math.random()-0.5)*0.9;
+    var a = gameRandom()*TWO_PI;
+    if(settings.gateChaos) a += (gameRandom()-0.5)*0.9;
     var maxD = Math.max(0, MAX_PLAYER_R - holeR - 0.2);
-    var d = Math.random()*maxD;
-    if(settings.gateChaos) d = Math.min(maxD, d + Math.random()*0.7);
+    var d = gameRandom()*maxD;
+    if(settings.gateChaos) d = Math.min(maxD, d + gameRandom()*0.7);
     var hx = Math.cos(a)*d, hy = Math.sin(a)*d;
 
     var shape = new THREE.Shape();
@@ -617,7 +777,7 @@
     scene.add(group);
 
     var orbMesh = null;
-    var hasOrb = Math.random() < 0.7;
+    var hasOrb = gameRandom() < 0.7;
     if(hasOrb){
       orbMesh = new THREE.Mesh(new THREE.IcosahedronGeometry(0.38,0), new THREE.MeshBasicMaterial({color:hex.accent}));
       orbMesh.position.set(hx,hy,z);
@@ -637,7 +797,9 @@
   function clearRings(){ rings.forEach(disposeWall); rings = []; }
 
   function resetGame(){
+    window.__ISX_RUN_DODGED=0; window.__ISX_RUN_COMBO=0; window.__ISX_RUN_BEST_COMBO=0;
     clearRings();
+    seededRng = window.__ISX_DAILY_SEED ? mulberry32(hashSeed(String(window.__ISX_DAILY_SEED)+'|'+settings.difficulty)) : null;
     diff = DIFFICULTIES[settings.difficulty] || DIFFICULTIES.normal;
     px=0; py=0; vx=0; vy=0;
     score=0; distance=0; lives=diff.lives; multiplier=1;
@@ -681,12 +843,15 @@
   }
 
   function gameOver(){
+    document.body.classList.remove('mobile-playing');
+    resetJoystick();
     state = 'over';
     stopMusic();
     stats.gamesPlayed += 1;
     stats.totalDistance += Math.floor(distance);
     stats.best = Math.max(stats.best, Math.floor(score));
     saveData();
+    if(window.submitOnlineScore) window.submitOnlineScore(Math.floor(score), Math.floor(distance));
     document.getElementById('final-score').textContent = Math.floor(score);
     document.getElementById('best-score').textContent = stats.best;
     document.getElementById('menu-best').textContent = stats.best;
@@ -704,6 +869,13 @@
     if(e.key==='ArrowUp'||e.key==='w'||e.key==='W') keys.up=true;
     if(e.key==='ArrowDown'||e.key==='s'||e.key==='S') keys.down=true;
     if(e.key==='Escape'){ togglePause(); }
+    if(e.key==='p'||e.key==='P'){ if(state==='playing'||state==='paused') togglePause(); }
+    if(e.key==='m'||e.key==='M'){
+      settings.musicOn=!settings.musicOn;
+      saveData();
+      updateMusicVolume();
+      applySettingsToUI();
+    }
   });
   window.addEventListener('keyup', function(e){
     if(e.key==='ArrowLeft'||e.key==='a'||e.key==='A') keys.left=false;
@@ -718,11 +890,46 @@
   var joystickPointerId = null;
   var joystickRadius = 69;
   var knobRadius = 29;
+  function applyJoystickLayout(){
+    if(!joystick) return;
+    var size=Math.max(110,Math.min(210,Number(settings.joystickSize)||156));
+    var knob=Math.round(size*0.43);
+    joystickRadius=size/2; knobRadius=knob/2;
+    joystick.style.setProperty('width',size+'px','important'); joystick.style.setProperty('height',size+'px','important');
+    joystickKnob.style.setProperty('width',knob+'px','important'); joystickKnob.style.setProperty('height',knob+'px','important');
+    joystickKnob.style.margin=(-knob/2)+'px 0 0 '+(-knob/2)+'px';
+    var pos=settings.joystickPosition||'bottom-left';
+    if(pos==='bottom-right' || settings.joystickHandedness==='right'){ joystick.style.left='auto'; joystick.style.right='24px'; }
+    else { joystick.style.left='24px'; joystick.style.right='auto'; }
+    joystick.style.bottom='28px'; joystick.style.top='auto';
+    joystick.classList.remove('floating');
+  }
   var isMobileControl = window.matchMedia('(max-width:600px)').matches;
+  applyJoystickLayout();
+  var controllerX=0, controllerY=0, controllerButtons={};
+  var gamepadIndex=null;
+  window.addEventListener('gamepadconnected', function(e){ gamepadIndex=e.gamepad.index; });
+  window.addEventListener('gamepaddisconnected', function(e){ if(gamepadIndex===e.gamepad.index){gamepadIndex=null; controllerX=0; controllerY=0;} });
+  function pollGamepad(){
+    if(gamepadIndex===null) return;
+    var pads=navigator.getGamepads ? navigator.getGamepads() : [];
+    var gp=pads[gamepadIndex]; if(!gp) return;
+    var dead=.16;
+    var x=gp.axes && gp.axes.length>0 ? gp.axes[0] : 0;
+    var y=gp.axes && gp.axes.length>1 ? gp.axes[1] : 0;
+    if(Math.abs(x)<dead) x=0; else x=Math.sign(x)*(Math.abs(x)-dead)/(1-dead);
+    if(Math.abs(y)<dead) y=0; else y=Math.sign(y)*(Math.abs(y)-dead)/(1-dead);
+    controllerX=Math.max(-1,Math.min(1,-x));
+    controllerY=Math.max(-1,Math.min(1,-y));
+    if(gp.buttons && gp.buttons[9] && gp.buttons[9].pressed && !controllerButtons.start){ togglePause(); }
+    controllerButtons.start=!!(gp.buttons && gp.buttons[9] && gp.buttons[9].pressed);
+  }
+  setInterval(pollGamepad,16);
 
   function resetJoystick(){
     touchX=0; touchY=0; joystickPointerId=null;
     joystickKnob.style.transform='translate(0px,0px)';
+    if(joystick){ applyJoystickLayout(); }
   }
   function updateJoystick(e){
     var r=joystick.getBoundingClientRect();
@@ -732,14 +939,14 @@
     var dist=Math.hypot(dx,dy);
     if(dist>max){ dx=dx/dist*max; dy=dy/dist*max; }
     var nx=dx/max, ny=dy/max;
-    var dead=.10;
+    var dead=Math.max(0,Math.min(0.45,Number(settings.joystickDeadzone)||0));
     if(Math.hypot(nx,ny)<dead){ nx=0; ny=0; }
     else {
       var mag=Math.hypot(nx,ny);
       mag=(mag-dead)/(1-dead);
       nx=nx/mag*Math.min(1,mag); ny=ny/mag*Math.min(1,mag);
     }
-    touchX=nx; touchY=-ny;
+    touchX=-nx*(Number(settings.joystickSensitivity)||1); touchY=-ny*(Number(settings.joystickSensitivity)||1);
     joystickKnob.style.transform='translate('+dx+'px,'+dy+'px)';
   }
   joystick.addEventListener('pointerdown',function(e){
@@ -747,8 +954,43 @@
     e.preventDefault(); e.stopPropagation();
     joystickPointerId=e.pointerId;
     if(joystick.setPointerCapture) joystick.setPointerCapture(e.pointerId);
+    if(window.matchMedia('(max-width:600px)').matches){
+      var size=Math.max(110,Math.min(210,Number(settings.joystickSize)||156)), pad=18;
+      var x=Math.max(size/2, Math.min(window.innerWidth-size/2, e.clientX));
+      var y=Math.max(size/2, Math.min(window.innerHeight-size/2, e.clientY));
+      joystick.style.left=(x-size/2)+'px'; joystick.style.top=(y-size/2)+'px'; joystick.style.bottom='auto';
+      joystick.classList.add('floating');
+    }
     updateJoystick(e);
   });
+  // On phones, allow the thumb to start anywhere on the playfield. The joystick
+  // becomes a floating thumbstick at the initial touch position, which avoids
+  // stretching your thumb back to a fixed corner.
+  window.addEventListener('pointerdown',function(e){
+    if(!isMobileControl || state!=='playing') return;
+    if(e.pointerType!=='touch' && e.pointerType!=='pen') return;
+    var t=e.target;
+    if(t && (t.closest && t.closest('button, input, .panel, #pause-btn, #resonance-wrap'))) return;
+    if(joystickPointerId!==null) return;
+    e.preventDefault();
+    joystickPointerId=e.pointerId;
+    var size=Math.max(110,Math.min(210,Number(settings.joystickSize)||156));
+    var x=Math.max(size/2,Math.min(window.innerWidth-size/2,e.clientX));
+    var y=Math.max(size/2,Math.min(window.innerHeight-size/2,e.clientY));
+    joystick.style.left=(x-size/2)+'px';
+    joystick.style.top=(y-size/2)+'px';
+    joystick.style.bottom='auto';
+    joystick.classList.add('floating');
+    if(joystick.setPointerCapture) { try{ joystick.setPointerCapture(e.pointerId); }catch(err){} }
+    updateJoystick(e);
+  },{passive:false});
+
+  window.addEventListener('pointermove',function(e){
+    if(!isMobileControl || e.pointerId!==joystickPointerId) return;
+    e.preventDefault();
+    updateJoystick(e);
+  },{passive:false});
+
   joystick.addEventListener('pointermove',function(e){
     if(e.pointerId!==joystickPointerId) return;
     e.preventDefault(); e.stopPropagation(); updateJoystick(e);
@@ -796,52 +1038,56 @@
     if(id) document.getElementById(id).classList.remove('hidden');
   }
 
-  document.getElementById('btn-start').addEventListener('click', function(){
-    initAudio(); startMusic();
+  function beginGameRun(){
+    // Daily/duel state belongs to the separate upgrade layer. Keep the core
+    // game independent of those private variables so ENGAGE cannot throw a
+    // ReferenceError before resetGame() runs.
+    document.body.classList.add('mobile-playing');
+    resetJoystick();
+    keys.left=false; keys.right=false; keys.up=false; keys.down=false;
+    initAudio();
     resetGame();
     state = 'playing';
     showScreen(null);
-    startMusic();
     document.getElementById('hud').classList.add('show');
     document.getElementById('pause-btn').classList.add('show');
-    if(settings.showFps) document.getElementById('fps').classList.add('show');
-  });
-  document.getElementById('btn-retry').addEventListener('click', function(){
-    resetGame();
-    state = 'playing';
-    showScreen(null);
-    startMusic();
-    document.getElementById('hud').classList.add('show');
-    document.getElementById('pause-btn').classList.add('show');
-    if(settings.showFps) document.getElementById('fps').classList.add('show');
-  });
+    document.getElementById('fps').classList.toggle('show', !!settings.showFps);
+  }
+
+  document.getElementById('btn-start').addEventListener('click', beginGameRun);
+  document.getElementById('btn-retry').addEventListener('click', beginGameRun);
   document.getElementById('btn-over-menu').addEventListener('click', function(){
-    state='menu'; stopMusic(); showScreen('screen-menu');
+    state='menu'; pauseMusic(); showScreen('screen-menu');
+    if(settings.musicOn) resumeMusic();
   });
   document.getElementById('btn-open-settings').addEventListener('click', function(){
-    settingsReturnTo='menu'; showScreen('screen-settings');
+    settingsReturnTo='menu';
+    showScreen('screen-settings');
   });
   document.getElementById('btn-settings-back').addEventListener('click', function(){
     showScreen(settingsReturnTo==='pause' ? 'screen-pause' : 'screen-menu');
+    if(settings.musicOn) resumeMusic();
   });
   document.getElementById('pause-btn').addEventListener('click', togglePause);
   document.getElementById('btn-resume').addEventListener('click', function(){
-    state='playing'; showScreen(null);
+    state='playing'; showScreen(null); resumeMusic();
   });
   document.getElementById('btn-pause-settings').addEventListener('click', function(){
-    settingsReturnTo='pause'; showScreen('screen-settings');
+    settingsReturnTo='pause';
+    showScreen('screen-settings');
   });
   document.getElementById('btn-pause-quit').addEventListener('click', function(){
-    stopMusic();
+    pauseMusic();
     state='menu';
     document.getElementById('hud').classList.remove('show');
     document.getElementById('pause-btn').classList.remove('show');
     document.getElementById('fps').classList.remove('show');
     showScreen('screen-menu');
+    if(settings.musicOn) resumeMusic();
   });
   function togglePause(){
-    if(state==='playing'){ state='paused'; stopMusic(); showScreen('screen-pause'); }
-    else if(state==='paused'){ state='playing'; showScreen(null); startMusic(); }
+    if(state==='playing'){ state='paused'; pauseMusic(); showScreen('screen-pause'); }
+    else if(state==='paused'){ state='playing'; showScreen(null); resumeMusic(); }
   }
   document.getElementById('btn-reset-settings').addEventListener('click', function(){
     settings = Object.assign({}, DEFAULT_SETTINGS);
@@ -982,6 +1228,11 @@
   setupToggle('s-sfxOn','sfxOn');
   setupRange('s-sfxVol','sfxVol');
   setupRange('s-sensitivity','sensitivity');
+  setupRange('s-joystickSize','joystickSize',applyJoystickLayout);
+  setupRange('s-joystickSensitivity','joystickSensitivity');
+  setupRange('s-joystickDeadzone','joystickDeadzone');
+  setupSegment('seg-joystickPosition','joystickPosition',applyJoystickLayout);
+  setupSegment('seg-joystickHandedness','joystickHandedness',applyJoystickLayout);
   setupToggle('s-invertY','invertY');
   setupSegment('seg-touchMode','touchMode');
   setupSegment('seg-theme','theme', applyTheme);
@@ -1007,6 +1258,9 @@
     document.getElementById('s-sfxOn').checked = settings.sfxOn;
     document.getElementById('s-sfxVol').value = settings.sfxVol;
     document.getElementById('s-sensitivity').value = settings.sensitivity;
+    document.getElementById('s-joystickSize').value = settings.joystickSize;
+    document.getElementById('s-joystickSensitivity').value = settings.joystickSensitivity;
+    document.getElementById('s-joystickDeadzone').value = settings.joystickDeadzone;
     document.getElementById('s-invertY').checked = settings.invertY;
     document.getElementById('s-hitFlash').checked = settings.hitFlash;
     document.getElementById('s-fovPulse').checked = settings.fovPulse;
@@ -1020,6 +1274,9 @@
     refreshSegment('seg-musicRate','musicRate');
     refreshSegment('seg-difficulty','difficulty');
     refreshSegment('seg-touchMode','touchMode');
+    refreshSegment('seg-joystickPosition','joystickPosition');
+    refreshSegment('seg-joystickHandedness','joystickHandedness');
+    applyJoystickLayout();
     refreshSegment('seg-theme','theme');
     refreshSegment('seg-shakeIntensity','shakeIntensity');
     refreshSegment('seg-trailDensity','trailDensity');
@@ -1056,8 +1313,8 @@
       }
     }
 
-    var ix = (keys.left?1:0)-(keys.right?1:0) + touchX;
-    var iyRaw = (keys.up?1:0)-(keys.down?1:0) + touchY;
+    var ix = (keys.left?1:0)-(keys.right?1:0) + touchX + controllerX;
+    var iyRaw = (keys.up?1:0)-(keys.down?1:0) + touchY + controllerY;
     var iy = settings.invertY ? -iyRaw : iyRaw;
     ix = Math.max(-1, Math.min(1, ix));
     iy = Math.max(-1, Math.min(1, iy));
@@ -1151,9 +1408,13 @@
         var d = angDist2D(px,py,r.hx,r.hy);
         var ok = overdrive || d <= (r.holeR - SHIP_RADIUS);
         if(ok){
+          window.__ISX_RUN_DODGED=(window.__ISX_RUN_DODGED||0)+1;
+          window.__ISX_RUN_COMBO=(window.__ISX_RUN_COMBO||0)+1;
+          window.__ISX_RUN_BEST_COMBO=Math.max(window.__ISX_RUN_BEST_COMBO||0,window.__ISX_RUN_COMBO||0);
           score += 10*multiplier;
           beep(440,0.04,'sine',0.05);
         } else {
+          window.__ISX_RUN_COMBO=0;
           lives -= 1;
           updateLivesUI();
           triggerShake(0.4, 0.35);
@@ -1214,6 +1475,210 @@
     renderer.render(scene, camera);
   }
   animate();
+})();
+</script>
+
+<script>
+(function(){
+  'use strict';
+  // Online layer: deliberately isolated from the movement engine. Do not modify ix/iy below.
+  var ONLINE_API = (window.IMPOSSIBLE_START_API || '').replace(/\/$/,'');
+  var DEVICE_KEY='impossible-start:device-id:v1';
+  var PROFILE_KEY='impossible-start:profile:v1';
+  var onlineProfile=null, dailyMode=false, dailySeed=null, currentDuelCode=null;
+
+  function uuid(){
+    if(window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return 'd-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2);
+  }
+  function deviceId(){
+    try{ var v=localStorage.getItem(DEVICE_KEY); if(v) return v; v=uuid(); localStorage.setItem(DEVICE_KEY,v); return v; }catch(e){ return uuid(); }
+  }
+  var DEVICE_ID=deviceId();
+  function loadProfile(){try{onlineProfile=JSON.parse(localStorage.getItem(PROFILE_KEY)||'null')}catch(e){onlineProfile=null}}
+  function saveProfile(){try{localStorage.setItem(PROFILE_KEY,JSON.stringify(onlineProfile))}catch(e){}}
+  loadProfile();
+
+  function api(path, options){
+    if(!ONLINE_API) return Promise.reject(new Error('NO_SERVER'));
+    options=options||{}; options.headers=Object.assign({'Content-Type':'application/json','X-Device-ID':DEVICE_ID},options.headers||{});
+    return fetch(ONLINE_API+path,options).then(function(r){return r.json().catch(function(){return {}}).then(function(d){if(!r.ok) throw new Error(d.error||'SERVER_ERROR'); return d;})});
+  }
+  function setOnlineBar(){
+    var el=document.getElementById('online-bar'); if(!el)return;
+    el.textContent=onlineProfile ? ('ONLINE • '+onlineProfile.nickname) : 'OFFLINE PROFILE';
+  }
+  function showOnline(title, html){
+    document.getElementById('online-title').textContent=title;
+    document.getElementById('online-content').innerHTML=html;
+    showScreen('online-screen');
+  }
+  function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+  function scoreRows(rows){
+    if(!rows || !rows.length) return '<div class="online-status">No scores yet.</div>';
+    return '<div class="online-card">'+rows.map(function(r,i){return '<div class="online-row"><span class="online-rank">#'+(i+1)+'</span><span class="online-name">'+esc(r.nickname)+'</span><span class="online-score">'+Number(r.score||0)+'</span></div>'}).join('')+'</div>';
+  }
+  function requireProfile(action){
+    if(onlineProfile) return action();
+    showScreen('nickname-screen');
+  }
+
+  function registerProfile(){
+    var input=document.getElementById('nickname-input'), status=document.getElementById('nickname-status');
+    var nick=(input.value||'').trim();
+    if(!/^[A-Za-z0-9_ -]{3,16}$/.test(nick)){status.textContent='Use 3–16 letters, numbers, spaces, _ or -.';return;}
+    status.textContent='Checking nickname...';
+    api('/profile',{method:'POST',body:JSON.stringify({nickname:nick})}).then(function(d){
+      onlineProfile={nickname:d.nickname,token:d.token}; saveProfile(); setOnlineBar(); showScreen('screen-menu');
+    }).catch(function(e){status.textContent=e.message==='NICKNAME_TAKEN'?'That nickname is already taken.':'Server unavailable. You can still play offline.';});
+  }
+  document.getElementById('btn-save-nickname').addEventListener('click',registerProfile);
+  document.getElementById('nickname-input').addEventListener('keydown',function(e){if(e.key==='Enter')registerProfile()});
+
+  document.getElementById('btn-leaderboard').addEventListener('click',function(){requireProfile(function(){
+    showOnline('GLOBAL LEADERBOARD','<div class="online-status">Loading...</div>');
+    api('/leaderboard').then(function(d){document.getElementById('online-content').innerHTML='<div class="online-status">GLOBAL • TOP 100</div>'+scoreRows(d.rows)}).catch(function(){document.getElementById('online-content').innerHTML='<div class="online-status">Leaderboard server unavailable.</div>'});
+  })});
+
+  document.getElementById('btn-daily').addEventListener('click',function(){requireProfile(function(){
+    dailyMode=true; currentDuelCode=null; dailySeed=new Date().toISOString().slice(0,10); localStorage.setItem('impossible-start:daily-date',dailySeed);
+    showOnline('DAILY RUN','<div class="online-note">Today everyone gets the same deterministic challenge. Press PLAY DAILY to begin.</div><div class="menu-row"><button class="action" id="play-daily">PLAY DAILY</button></div>');
+    document.getElementById('play-daily').onclick=function(){ showScreen(null); document.body.classList.add('mobile-playing'); initAudio(); startMusic(); resetGame(); state='playing'; document.getElementById('hud').classList.add('show'); document.getElementById('pause-btn').classList.add('show'); };
+  })});
+
+  document.getElementById('btn-friends').addEventListener('click',function(){requireProfile(function(){
+    showOnline('FRIENDS','<div class="online-note">Add friends by exact nickname.</div><div style="display:flex;gap:8px"><input id="friend-input" class="online-input" style="text-align:left" maxlength="16" placeholder="NICKNAME"><button class="online-btn" id="friend-add">ADD</button></div><div id="friend-list" class="online-card">Loading...</div>');
+    document.getElementById('friend-add').onclick=function(){var n=document.getElementById('friend-input').value.trim();api('/friends/request',{method:'POST',body:JSON.stringify({nickname:n})}).then(function(){loadFriends()}).catch(function(e){document.getElementById('friend-list').textContent=e.message})};
+    function loadFriends(){api('/friends').then(function(d){var f=d.friends||[];document.getElementById('friend-list').innerHTML=f.length?f.map(function(x){return '<div class="online-row"><span class="online-name">'+esc(x.nickname)+'</span><span>'+esc(x.status||'friend')+'</span></div>'}).join(''):'No friends yet.'}).catch(function(){document.getElementById('friend-list').textContent='Server unavailable.'})}
+    loadFriends();
+  })});
+
+  document.getElementById('btn-duels').addEventListener('click',function(){requireProfile(function(){
+    showOnline('DUELS','<div class="online-note">Create a duel and send the code to a friend. Both players get the same seed; highest score wins.</div><div style="display:flex;gap:8px"><input id="duel-input" class="online-input" style="text-align:left" maxlength="16" placeholder="FRIEND NICKNAME"><button class="online-btn" id="duel-create">CREATE</button></div><div id="duel-status" class="online-card">No active duel.</div>');
+    document.getElementById('duel-create').onclick=function(){var n=document.getElementById('duel-input').value.trim();api('/duels',{method:'POST',body:JSON.stringify({friend:n})}).then(function(d){currentDuelCode=d.code; document.getElementById('duel-status').innerHTML='DUEL CODE: <b>'+esc(d.code)+'</b><br><br>Seed: '+esc(d.seed)+'<br><button class="online-btn" id="duel-play">PLAY DUEL</button>';document.getElementById('duel-play').onclick=function(){dailyMode=false;dailySeed=d.seed;showScreen(null);document.body.classList.add('mobile-playing');initAudio();startMusic();resetGame();state='playing';document.getElementById('hud').classList.add('show');document.getElementById('pause-btn').classList.add('show')}}).catch(function(e){document.getElementById('duel-status').textContent=e.message})};
+  })});
+
+  document.getElementById('btn-online-back').addEventListener('click',function(){showScreen('screen-menu')});
+
+  // Score submission is called by the game's real gameOver() function.
+  window.submitOnlineScore=function(finalScore, finalDistance){
+    try{
+      if(onlineProfile && ONLINE_API){
+        var mode=dailyMode?'daily':(currentDuelCode?'duel':'normal');
+        fetch(ONLINE_API+'/scores',{method:'POST',headers:{'Content-Type':'application/json','X-Device-ID':DEVICE_ID,'X-Profile-Token':onlineProfile.token},body:JSON.stringify({score:finalScore,distance:finalDistance,mode:mode,seed:dailySeed||null,duelCode:currentDuelCode||null})}).catch(function(){});
+      }
+    }catch(e){}
+  };
+
+  // First launch: ask for nickname only when an online server is configured.
+  setOnlineBar();
+  if(ONLINE_API && !onlineProfile){
+    setTimeout(function(){showScreen('nickname-screen')},250);
+  }
+})();
+</script>
+
+<style id="isx-upgrade-css">
+#isx-overlay{position:fixed;inset:0;z-index:100;background:radial-gradient(ellipse at center,rgba(20,10,40,.5),rgba(3,4,9,.95));display:none;align-items:center;justify-content:center}
+#isx-overlay.show{display:flex}.isx-box{width:min(680px,94vw);max-height:88vh;overflow:auto;padding:28px;border:1px solid rgba(53,231,255,.28);background:rgba(8,12,24,.92);text-align:center}.isx-box h2{color:var(--cyan);letter-spacing:5px;margin:0 0 12px}.isx-box p,.isx-note{color:#8fb3c4;font-size:11px;line-height:1.7}.isx-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:16px 0}.isx-card{border:1px solid rgba(53,231,255,.16);padding:12px;text-align:left}.isx-big{font-size:26px;color:var(--amber);font-weight:bold}.isx-muted{color:#718694;font-size:10px}.isx-code{font-size:22px;letter-spacing:4px;color:var(--cyan);padding:10px;border:1px dashed rgba(53,231,255,.35);margin:12px 0}.isx-friend{display:flex;justify-content:space-between;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06)}.isx-row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:14px}.isx-input{width:100%;padding:11px;background:#050812;border:1px solid rgba(53,231,255,.3);color:var(--cyan);font:inherit;text-align:center}.isx-danger{border-color:var(--danger)!important;color:var(--danger)!important}
+@media(max-width:600px){.isx-box{padding:20px}.isx-grid{grid-template-columns:1fr}.isx-code{font-size:18px}}
+.isx-box b,.isx-card b,.isx-friend b{color:#f4f8ff!important}
+</style>
+<div id="isx-overlay"><div class="isx-box" id="isx-overlay-box"></div></div>
+<script>
+(function(){'use strict';
+  var K='impossible-start:upgrade:v3', PROFILE='impossible-start:profile:local:v2', FRIENDS='impossible-start:friends:v1', DUEL='impossible-start:duel:v1';
+  var mem={};
+  function safeGet(k){try{return window.localStorage.getItem(k)}catch(e){return mem[k]||null}}
+  function safeSet(k,v){try{window.localStorage.setItem(k,v);return true}catch(e){mem[k]=v;return false}}
+  function safeJSON(k,d){try{var x=JSON.parse(safeGet(k)||'null');return x&&typeof x==='object'?x:d}catch(e){return d}}
+  function uuid(){try{if(crypto.randomUUID)return crypto.randomUUID()}catch(e){}return 'p-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,10)}
+  var profile=safeJSON(PROFILE,null); if(!profile){profile={id:uuid(),nickname:''};safeSet(PROFILE,JSON.stringify(profile))}
+  var data=safeJSON(K,{stats:{best:0,bestDistance:0,bestCombo:0,totalRuns:0,obstaclesDodged:0,totalScore:0},achievements:{},daily:{},challenges:{},themes:{nova:true},friends:[]});
+  data.stats=data.stats||{}; data.achievements=data.achievements||{}; data.daily=data.daily||{}; data.challenges=data.challenges||{}; data.themes=data.themes||{nova:true};
+  var run={active:false,mode:'normal',startBest:0,seed:null,practice:false}; var duel={active:false,seed:null,p1:'',p2:'',scores:[],turn:0};
+  function save(){safeSet(K,JSON.stringify(data))} function saveProfile(){safeSet(PROFILE,JSON.stringify(profile))}
+  function localDate(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+  function hash(s){var h=2166136261;for(var i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return (h>>>0).toString(36).toUpperCase()}
+  function friendCode(id){return ('ISX-'+hash(id).padStart(7,'0')).slice(0,11)}
+  function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+  function overlay(html){document.getElementById('isx-overlay-box').innerHTML=html;document.getElementById('isx-overlay').classList.add('show')}
+  function closeOverlay(){document.getElementById('isx-overlay').classList.remove('show')}
+  function setSeed(seed){run.seed=seed;window.__ISX_SET_SEED(seed)} function clearSeed(){run.seed=null;window.__ISX_CLEAR_SEED()}
+  function todayDaily(){return localDate()}
+  function dailyEntry(){var d=todayDaily();if(data.daily.date!==d)data.daily={date:d,best:0,attempted:false};return data.daily}
+  function updateMenu(){var b=document.getElementById('menu-best');if(b)b.textContent=Math.floor(Math.max((window.__ISX_BEST||0),data.stats.best||0));var bar=document.getElementById('online-bar');if(bar)bar.textContent=profile.nickname?('LOCAL • '+profile.nickname):'LOCAL PROFILE';}
+  function profilePrompt(){
+    if(profile.nickname)return true;
+    var input=document.getElementById('nickname-input'); if(input) input.value='';
+    document.getElementById('nickname-screen').classList.remove('hidden');
+    document.getElementById('screen-menu').classList.add('hidden'); return false;
+  }
+  function saveNick(){var input=document.getElementById('nickname-input'), n=(input.value||'').trim(), st=document.getElementById('nickname-status');
+    if(!/^[A-Za-z0-9_ -]{3,16}$/.test(n)){st.textContent='Use 3–16 letters, numbers, spaces, _ or -.';return}
+    profile.nickname=n;saveProfile();st.textContent='Saved locally.';setTimeout(function(){document.getElementById('nickname-screen').classList.add('hidden');document.getElementById('screen-menu').classList.remove('hidden');updateMenu()},120); }
+  var nickBtn=document.getElementById('btn-save-nickname');if(nickBtn){nickBtn.addEventListener('click',function(e){e.preventDefault();e.stopImmediatePropagation();saveNick()},true)}
+  var nickInput=document.getElementById('nickname-input');if(nickInput)nickInput.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();saveNick()}});
+  // Existing server-oriented identity copy is changed to accurately describe local-only identity.
+  var note=document.querySelector('#nickname-screen .online-note');if(note)note.textContent='Your nickname and Player ID are stored only on this device. Nickname uniqueness is local only; there is no online account or global identity.';
+  var idNote=document.createElement('div');idNote.className='online-status';idNote.id='isx-player-id';document.querySelector('#nickname-screen .panel').appendChild(idNote);
+  function refreshId(){var el=document.getElementById('isx-player-id');if(el)el.textContent='PLAYER ID: '+friendCode(profile.id)+' • LOCAL ONLY'} refreshId();
+  // Feature buttons.
+  function capture(id,fn){var el=document.getElementById(id);if(el)el.addEventListener('click',function(e){e.preventDefault();e.stopImmediatePropagation();fn()},true)}
+  capture('btn-open-settings',function(){document.getElementById('screen-settings').classList.remove('hidden');document.getElementById('screen-menu').classList.add('hidden')});
+  capture('btn-settings-back',function(){document.getElementById('screen-settings').classList.add('hidden');document.getElementById('screen-menu').classList.remove('hidden');updateMenu()});
+  function statsView(){var s=data.stats;overlay('<h2>STATISTICS</h2><div class="isx-grid">'+[['BEST SCORE',s.best],['BEST DISTANCE',Math.floor(s.bestDistance)+'m'],['BEST COMBO',s.bestCombo],['TOTAL RUNS',s.totalRuns],['OBSTACLES DODGED',s.obstaclesDodged],['TOTAL SCORE',s.totalScore]].map(function(x){return '<div class="isx-card"><div class="isx-muted">'+x[0]+'</div><div class="isx-big">'+x[1]+'</div></div>'}).join('')+'</div><div class="isx-row"><button class="ghost" id="isx-stats-close">CLOSE</button></div>');document.getElementById('isx-stats-close').onclick=closeOverlay}
+  capture('btn-stats',statsView);
+  function achievementsView(){var list=[['FIRST SIGNAL','Complete your first run.','runs',1],['CENTURION','Score 100 points in one run.','score',100],['DISTANCE','Reach 250m in one run.','distance',250],['SHARD HUNTER','Dodge/catch 25 obstacles.','dodged',25],['DAILY','Set a Daily Best.','daily',1]];var html=list.map(function(a){var ok=!!data.achievements[a[0]];return '<div class="isx-friend"><span>'+a[0]+'<br><span class="isx-muted">'+a[1]+'</span></span><b>'+ (ok?'UNLOCKED':'LOCKED')+'</b></div>'}).join('');overlay('<h2>ACHIEVEMENTS</h2><div class="isx-card">'+html+'</div><div class="isx-row"><button class="ghost" id="isx-ach-close">CLOSE</button></div>');document.getElementById('isx-ach-close').onclick=closeOverlay}
+  capture('btn-achievements',achievementsView);
+  function practice(){if(!profilePrompt())return;run.mode='practice';run.practice=true;setSeed('PRACTICE-'+localDate());document.getElementById('btn-start').click();}
+  capture('btn-practice',practice);
+  function challengeView(){var d=dailyEntry(),day=parseInt(d.date.replace(/-/g,''),10);var target=100+(day%5)*50;var done=d.best>=target;overlay('<h2>DAILY CHALLENGES</h2><p>Today: <b>'+d.date+'</b></p><div class="isx-card"><b>SURVIVE THE SIGNAL</b><br><span class="isx-muted">Reach '+target+' score in today’s Daily Run.</span><br><br><b>'+(done?'COMPLETED':'IN PROGRESS')+'</b></div><div class="isx-row"><button class="action" id="isx-ch-play">PLAY DAILY</button><button class="ghost" id="isx-ch-close">CLOSE</button></div>');document.getElementById('isx-ch-close').onclick=closeOverlay;document.getElementById('isx-ch-play').onclick=function(){closeOverlay();dailyStart()}}
+  capture('btn-daily-challenge',challengeView);
+  function dailyStart(){if(!profilePrompt())return;var d=dailyEntry();run.mode='daily';run.practice=false;setSeed('DAILY-'+d.date);overlay('<h2>DAILY RUN</h2><p>'+d.date+'</p><div class="isx-grid"><div class="isx-card"><div class="isx-muted">TODAY\'S BEST</div><div class="isx-big">'+(d.best||0)+'</div></div><div class="isx-card"><div class="isx-muted">SEED</div><div class="isx-big" style="font-size:16px">'+hash('DAILY-'+d.date)+'</div></div></div><p>Same deterministic challenge for every player on this date. No global leaderboard.</p><div class="isx-row"><button class="action" id="isx-daily-play">PLAY DAILY</button><button class="ghost" id="isx-daily-close">CLOSE</button></div>');document.getElementById('isx-daily-close').onclick=closeOverlay;document.getElementById('isx-daily-play').onclick=function(){closeOverlay();startViaButton('btn-start')}}
+  function startViaButton(id){document.getElementById(id).click();}
+  capture('btn-daily',function(){dailyStart()});
+  // Friends: local code only.
+  function friendsView(){var fs=safeJSON(FRIENDS,[]);var rows=fs.length?fs.map(function(f,i){return '<div class="isx-friend"><span>'+esc(f.nickname)+'<br><span class="isx-muted">'+esc(f.code)+'</span></span><button class="ghost isx-danger" data-rm="'+i+'">REMOVE</button></div>'}).join(''):'<div class="isx-note">No local friends yet.</div>';overlay('<h2>LOCAL FRIENDS</h2><p>Add people by their locally shared Friend Code. This does not create online friends.</p><input class="isx-input" id="isx-friend-code" maxlength="11" placeholder="ISX-XXXXXXX"><input class="isx-input" id="isx-friend-name" maxlength="16" style="margin-top:8px" placeholder="NICKNAME"><div class="isx-row"><button class="action" id="isx-add-friend">ADD</button></div><div class="isx-card" style="margin-top:14px">'+rows+'</div><div class="isx-row"><button class="ghost" id="isx-friend-close">CLOSE</button></div>');document.getElementById('isx-friend-close').onclick=closeOverlay;document.getElementById('isx-add-friend').onclick=function(){var code=document.getElementById('isx-friend-code').value.trim().toUpperCase(),name=document.getElementById('isx-friend-name').value.trim();if(!/^ISX-[A-Z0-9]{4,}$/.test(code)||!name){return}var fs=safeJSON(FRIENDS,[]);if(code===friendCode(profile.id))return;if(!fs.some(function(x){return x.code===code})){fs.push({code:code,nickname:name});safeSet(FRIENDS,JSON.stringify(fs))}friendsView()};document.querySelectorAll('[data-rm]').forEach(function(b){b.onclick=function(){var fs=safeJSON(FRIENDS,[]);fs.splice(Number(b.dataset.rm),1);safeSet(FRIENDS,JSON.stringify(fs));friendsView()}})}
+  capture('btn-friends',friendsView);
+  function duelView(){overlay('<h2>PASS-AND-PLAY DUEL</h2><p>Two players take turns on this device. Both turns use the same deterministic seed. This is local multiplayer, not online.</p><input class="isx-input" id="isx-p1" maxlength="16" placeholder="PLAYER 1 NICKNAME" value="'+esc(profile.nickname||'PLAYER 1')+'"><input class="isx-input" id="isx-p2" maxlength="16" style="margin-top:8px" placeholder="PLAYER 2 NICKNAME"><div class="isx-row"><button class="action" id="isx-duel-create">CREATE DUEL</button><button class="ghost" id="isx-duel-close">CLOSE</button></div>');document.getElementById('isx-duel-close').onclick=closeOverlay;document.getElementById('isx-duel-create').onclick=function(){var p1=document.getElementById('isx-p1').value.trim()||'PLAYER 1',p2=document.getElementById('isx-p2').value.trim()||'PLAYER 2';duel={active:true,seed:'DUEL-'+localDate()+'-'+hash(p1+'|'+p2+'|'+Date.now()),p1:p1,p2:p2,scores:[],turn:1};overlay('<h2>DUEL READY</h2><p>'+esc(p1)+' vs '+esc(p2)+'</p><div class="isx-code">'+esc(hash(duel.seed))+'</div><p>Both players will receive the same gate sequence.</p><div class="isx-row"><button class="action" id="isx-duel-start">PLAYER 1 START</button></div>');document.getElementById('isx-duel-start').onclick=function(){closeOverlay();duelTurnStart()}}}
+  capture('btn-duels',duelView);
+  capture('btn-leaderboard',function(){overlay('<h2>LEADERBOARD</h2><p>Offline mode has no global leaderboard. Scores shown here are only your local records.</p><div class="isx-card"><b>'+esc(profile.nickname||'PLAYER')+'</b><br>Best Score: <span class="isx-big">'+data.stats.best+'</span></div><div class="isx-row"><button class="ghost" id="isx-lb-close">CLOSE</button></div>');document.getElementById('isx-lb-close').onclick=closeOverlay});
+  function duelTurnStart(){run.mode='duel';run.practice=false;setSeed(duel.seed);startViaButton('btn-start');}
+  // Mark runs in the capture phase, but let the original game buttons continue normally.
+  function markStart(id){var el=document.getElementById(id);if(!el)return;el.addEventListener('click',function(){
+    if(run.mode==='daily'||run.mode==='duel'||run.mode==='practice')setSeed(run.seed||('LOCAL-'+localDate())); else clearSeed();
+    run.active=true;run.startBest=data.stats.best||0;
+  },true)}
+  markStart('btn-start'); markStart('btn-retry');
+  // Game-over observer: stats are derived from the game's real HUD values, so physics remains untouched.
+  var over=document.getElementById('screen-over'), lastOver=false;
+  function finalizeRun(){if(!run.active)return;run.active=false;var sc=Math.floor(Number(document.getElementById('final-score').textContent)||0),dist=Math.floor(Number((document.getElementById('val-dist').textContent||'0').replace(/[^0-9.-]/g,''))||0);data.stats.totalRuns++;data.stats.totalScore+=sc;data.stats.best=Math.max(data.stats.best,sc);data.stats.bestDistance=Math.max(data.stats.bestDistance,dist);data.stats.obstaclesDodged+=Number(window.__ISX_RUN_DODGED||0);data.stats.bestCombo=Math.max(data.stats.bestCombo,Number(window.__ISX_RUN_BEST_COMBO||0));var newlyUnlocked=[];function unlockAchievement(key,desc,condition){if(condition&&!data.achievements[key]){data.achievements[key]=true;newlyUnlocked.push([key,desc]);}}unlockAchievement('FIRST SIGNAL','Complete your first run.',true);unlockAchievement('CENTURION','Score 100 points in one run.',sc>=100);unlockAchievement('DISTANCE','Reach 250m in one run.',dist>=250);unlockAchievement('SHARD HUNTER','Dodge/catch 25 obstacles.',Number(window.__ISX_RUN_DODGED||0)>=25);if(run.mode==='daily'){var d=dailyEntry();d.best=Math.max(d.best,sc);d.attempted=true;if(d.best>0)unlockAchievement('DAILY','Set a Daily Best.',true)}else if(run.mode==='duel'){duel.scores.push(sc);if(duel.turn===1){duel.turn=2;save();setTimeout(function(){duelTurnStart()},250)}else{duel.active=false;save();setTimeout(function(){duelResult()},250)}}save();updateMenu();newlyUnlocked.forEach(function(a,i){setTimeout(function(){if(window.__ISX_NOTIFY_ACHIEVEMENT)window.__ISX_NOTIFY_ACHIEVEMENT(a[0],a[1]);},i*220)});if(run.mode==='duel'&&duel.turn===2)return;}
+  function duelResult(){var a=duel.scores[0]||0,b=duel.scores[1]||0,w=a===b?'DRAW':(a>b?duel.p1:duel.p2);overlay('<h2>DUEL COMPLETE</h2><div class="isx-grid"><div class="isx-card"><div class="isx-muted">'+esc(duel.p1)+'</div><div class="isx-big">'+a+'</div></div><div class="isx-card"><div class="isx-muted">'+esc(duel.p2)+'</div><div class="isx-big">'+b+'</div></div></div><p>WINNER: <b>'+esc(w)+'</b></p><div class="isx-row"><button class="action" id="isx-duel-done">DONE</button></div>');document.getElementById('isx-duel-done').onclick=function(){closeOverlay();document.getElementById('screen-menu').classList.remove('hidden')}}
+  if(over){new MutationObserver(function(){var vis=!over.classList.contains('hidden');if(vis&&!lastOver)finalizeRun();lastOver=vis}).observe(over,{attributes:true,attributeFilter:['class']})}
+  // Reset progress: includes upgrade data, profile, friends and the original game's data key.
+  capture('btn-reset-data',function(){if(confirm('Reset ALL local progress, statistics, achievements, friends and profile? This cannot be undone.')){try{localStorage.removeItem('impossible-start:data:v2')}catch(e){}try{localStorage.removeItem(PROFILE);localStorage.removeItem(FRIENDS);localStorage.removeItem(K)}catch(e){}location.reload()}});
+  // Nickname in settings: inject a local profile section and a local Friend Code.
+  var setPanel=document.getElementById('settings-scroll');if(setPanel){var sec=document.createElement('div');sec.className='set-section';sec.innerHTML='<h3>LOCAL PROFILE</h3><div class="set-row"><span class="set-label">Nickname</span><button class="ghost" id="isx-change-nick">CHANGE</button></div><div class="set-row"><span class="set-label">Friend Code</span><span class="set-label" style="color:var(--cyan)" id="isx-friend-code-display"></span></div><div class="set-row"><span class="set-label">Identity</span><span class="set-label">LOCAL ONLY</span></div>';var back=setPanel.querySelector('.menu-row:last-child');setPanel.insertBefore(sec,back);document.getElementById('isx-friend-code-display').textContent=friendCode(profile.id);document.getElementById('isx-change-nick').onclick=function(){document.getElementById('screen-settings').classList.add('hidden');document.getElementById('nickname-screen').classList.remove('hidden');document.getElementById('nickname-input').value=profile.nickname};}
+  // Daily badge and menu copy are explicitly offline.
+  var badge=document.getElementById('daily-badge');if(badge)badge.textContent='DAILY RUN • OFFLINE • SAME LOCAL-DATE SEED FOR EVERYONE';
+  updateMenu();
+  if(!profile.nickname)setTimeout(profilePrompt,80);
+  window.addEventListener('storage',function(){updateMenu()});
+})();
+</script>
+
+<script id="isx-achievement-notifications">
+(function(){
+  'use strict';
+  var wrap=document.createElement('div'); wrap.id='isx-ach-toast-wrap'; document.body.appendChild(wrap);
+  window.__ISX_NOTIFY_ACHIEVEMENT=function(name,desc){
+    var toast=document.createElement('div'); toast.className='isx-ach-toast';
+    toast.innerHTML='<div class="isx-ach-icon">★</div><div><div class="t1">ACHIEVEMENT EARNED</div><div class="t2"></div><div class="t3"></div></div>';
+    toast.querySelector('.t2').textContent=name; toast.querySelector('.t3').textContent=desc||'Achievement unlocked!';
+    wrap.appendChild(toast);
+    setTimeout(function(){if(toast.parentNode)toast.parentNode.removeChild(toast)},4100);
+  };
 })();
 </script>
 </body>
