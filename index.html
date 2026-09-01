@@ -651,11 +651,37 @@ button{touch-action:manipulation}
   function readLocalData(){
     try{
       var raw = window.localStorage.getItem(SAVE_KEY);
-      return raw ? JSON.parse(raw) : null;
-    }catch(e){ return null; }
+      if(raw) return JSON.parse(raw);
+    }catch(e){}
+    return readCookieData();
   }
   function writeLocalData(data){
-    try{ window.localStorage.setItem(SAVE_KEY, JSON.stringify(data)); }catch(e){}
+    var text='';
+    try{text=JSON.stringify(data);}catch(e){return false;}
+    var ok=false;
+    try{
+      window.localStorage.setItem(SAVE_KEY,text);
+      ok=window.localStorage.getItem(SAVE_KEY)===text;
+    }catch(e){}
+    /* Cookie fallback helps on some standalone-file/browser configurations. */
+    if(!ok){
+      try{
+        document.cookie=encodeURIComponent(SAVE_KEY)+'='+encodeURIComponent(text)+'; expires=Fri, 31 Dec 9999 23:59:59 GMT; path=/; SameSite=Lax';
+        ok=document.cookie.indexOf(encodeURIComponent(SAVE_KEY)+'=')!==-1;
+      }catch(e){}
+    }
+    return ok;
+  }
+  function readCookieData(){
+    try{
+      var key=encodeURIComponent(SAVE_KEY)+'=';
+      var parts=document.cookie.split(';');
+      for(var i=0;i<parts.length;i++){
+        var c=parts[i].trim();
+        if(c.indexOf(key)===0){var v=decodeURIComponent(c.slice(key.length));return JSON.parse(v);}
+      }
+    }catch(e){}
+    return null;
   }
   function applyLoadedData(data){
     if(!data || typeof data !== 'object') return;
@@ -861,6 +887,7 @@ button{touch-action:manipulation}
     stats.totalDistance += Math.floor(distance);
     stats.best = Math.max(stats.best, Math.floor(score));
     saveData();
+    if(window.__ISX_SYNC_CORE_STATS) window.__ISX_SYNC_CORE_STATS(stats, Math.floor(score), Math.floor(distance));
     if(window.submitOnlineScore) window.submitOnlineScore(Math.floor(score), Math.floor(distance));
     document.getElementById('final-score').textContent = Math.floor(score);
     document.getElementById('best-score').textContent = stats.best;
@@ -1625,8 +1652,29 @@ button{touch-action:manipulation}
   var FRIENDS='impossible-start:friends:v4';
   var DUEL='impossible-start:duel:v4';
   var mem={};
-  function get(k){try{return localStorage.getItem(k)}catch(e){return mem[k]||null}}
-  function set(k,v){try{localStorage.setItem(k,v)}catch(e){mem[k]=v}}
+  function cookieGet(k){
+    try{
+      var key=encodeURIComponent(k)+'=';
+      var parts=document.cookie.split(';');
+      for(var i=0;i<parts.length;i++){
+        var c=parts[i].trim();
+        if(c.indexOf(key)===0)return decodeURIComponent(c.slice(key.length));
+      }
+    }catch(e){}
+    return null;
+  }
+  function get(k){
+    try{var v=localStorage.getItem(k);if(v!==null)return v}catch(e){}
+    var c=cookieGet(k);if(c!==null)return c;
+    return mem[k]||null;
+  }
+  function set(k,v){
+    var ok=false;
+    try{localStorage.setItem(k,v);ok=localStorage.getItem(k)===v}catch(e){}
+    if(!ok){try{document.cookie=encodeURIComponent(k)+'='+encodeURIComponent(v)+'; expires=Fri, 31 Dec 9999 23:59:59 GMT; path=/; SameSite=Lax';ok=cookieGet(k)===v}catch(e){}}
+    if(!ok)mem[k]=v;
+    return ok;
+  }
   function json(k,d){try{var v=JSON.parse(get(k)||'null');return v&&typeof v==='object'?v:d}catch(e){return d}}
   function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
   function hash(s){var h=2166136261;for(var i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return (h>>>0).toString(36).toUpperCase()}
@@ -1651,9 +1699,15 @@ button{touch-action:manipulation}
   }
 
   var old=json('impossible-start:upgrade:v3',{});
+  var coreSaved=json('impossible-start:data:v2',{});
   var data=json(K,{stats:{best:0,bestDistance:0,bestCombo:0,totalRuns:0,obstaclesDodged:0,totalScore:0},achievements:{},daily:{},coins:0,skins:{owned:['default'],selected:'default'},friends:[]});
   if(old.stats&&!data.stats) data.stats=old.stats;
   data.stats=Object.assign({best:0,bestDistance:0,bestCombo:0,totalRuns:0,obstaclesDodged:0,totalScore:0},data.stats||{});
+  if(coreSaved.stats){
+    data.stats.best=Math.max(Number(data.stats.best)||0,Number(coreSaved.stats.best)||0);
+    data.stats.totalRuns=Math.max(Number(data.stats.totalRuns)||0,Number(coreSaved.stats.gamesPlayed)||0);
+    data.stats.bestDistance=Math.max(Number(data.stats.bestDistance)||0,Number(coreSaved.stats.totalDistance)||0);
+  }
   data.achievements=data.achievements||{}; data.daily=data.daily||{};
   data.coins=Math.max(0,Number(data.coins)||0);
   data.skins=data.skins||{owned:['default'],selected:'default'};
@@ -1667,6 +1721,13 @@ button{touch-action:manipulation}
   var run={active:false,mode:'normal',coinsStart:0};
   var oldStatsBest=Math.max(Number(data.stats.best)||0,Number((old.stats||{}).best)||0);data.stats.best=oldStatsBest;
   function save(){set(K,JSON.stringify(data));set(FRIENDS,JSON.stringify(friends));set(PROFILE,JSON.stringify(profile))}
+  window.__ISX_SYNC_CORE_STATS=function(coreStats,score,dist){
+    if(!coreStats)return;
+    data.stats.totalRuns=Math.max(Number(data.stats.totalRuns)||0,Number(coreStats.gamesPlayed)||0);
+    data.stats.best=Math.max(Number(data.stats.best)||0,Number(coreStats.best)||0,Number(score)||0);
+    data.stats.bestDistance=Math.max(Number(data.stats.bestDistance)||0,Number(coreStats.totalDistance)||0,Number(dist)||0);
+    save();updateIdentityUI();
+  };
   function profilePrompt(){
     if(profile.nickname)return true;
     var input=document.getElementById('nickname-input');
