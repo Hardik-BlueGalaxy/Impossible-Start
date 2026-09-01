@@ -172,6 +172,29 @@
 .online-grid,.menu-row{position:relative;z-index:2}
 button{touch-action:manipulation}
 </style>
+
+<style id="drag-drop-controls-css">
+#pc-drag-control, #mobile-drag-control {
+  position: fixed; z-index: 99990; display: none;
+  touch-action: none; user-select: none; -webkit-user-select: none;
+}
+#pc-drag-control {
+  left: 18px; bottom: 18px; width: 210px; height: 96px;
+  border: 2px solid rgba(80,170,255,.75); border-radius: 18px;
+  background: rgba(8,20,38,.72); box-shadow: 0 0 22px rgba(40,150,255,.25);
+}
+#mobile-drag-control {
+  left: 7vw; right: 7vw; bottom: 7vh; height: 90px;
+  border: 2px solid rgba(80,170,255,.75); border-radius: 20px;
+  background: rgba(8,20,38,.72); box-shadow: 0 0 22px rgba(40,150,255,.25);
+}
+.drag-control-label {
+  position:absolute; inset:0; display:grid; place-items:center;
+  color:#4db8ff; font-weight:800; letter-spacing:1px;
+  text-shadow:0 0 9px rgba(60,170,255,.9); pointer-events:none;
+}
+</style>
+
 </head>
 <body>
 
@@ -1450,6 +1473,9 @@ button{touch-action:manipulation}
           r.orbMesh = null;
           score += 25*multiplier;
           resonance = Math.min(RES_MAX, resonance+1);
+          // Every collected Resonance shard awards exactly 1 persistent coin.
+          // Use the centralized award function so the HUD and all save backends update immediately.
+          if(typeof window.__ISX_ADD_COINS==='function') window.__ISX_ADD_COINS(1,'RESONANCE');
           beep(880,0.08,'sine',0.12);
           if(resonance>=RES_MAX && !overdrive){
             overdrive=true; overdriveTimer=OVERDRIVE_TIME; resonance=0;
@@ -1652,6 +1678,32 @@ button{touch-action:manipulation}
   var FRIENDS='impossible-start:friends:v4';
   var DUEL='impossible-start:duel:v4';
   var mem={};
+  /* Robust persistence for standalone HTML files. Some browser/file contexts
+     block localStorage or partition it, so IndexedDB is the primary fallback. */
+  var IDB_NAME='ImpossibleStartSaveDB', IDB_STORE='kv', idb=null, idbLoaded=false, idbQueue=[];
+  function openIDB(){
+    try{
+      if(!window.indexedDB)return;
+      var req=indexedDB.open(IDB_NAME,1);
+      req.onupgradeneeded=function(e){try{e.target.result.createObjectStore(IDB_STORE)}catch(err){}};
+      req.onsuccess=function(e){
+        idb=e.target.result;
+        var tx=idb.transaction(IDB_STORE,'readonly'),store=tx.objectStore(IDB_STORE);
+        var all=store.openCursor();
+        all.onsuccess=function(ev){
+          var c=ev.target.result;
+          if(c){mem[c.key]=c.value;c.continue();}
+          else{
+            idbLoaded=true;
+            while(idbQueue.length){var q=idbQueue.shift();idbWrite(q[0],q[1]);}
+            window.__ISX_HYDRATE&&window.__ISX_HYDRATE();
+          }
+        };
+      };
+    }catch(e){idbLoaded=false;}
+  }
+  function idbWrite(k,v){try{if(!idb)return;var tx=idb.transaction(IDB_STORE,'readwrite');tx.objectStore(IDB_STORE).put(v,k)}catch(e){}}
+  openIDB();
   function cookieGet(k){
     try{
       var key=encodeURIComponent(k)+'=';
@@ -1666,14 +1718,15 @@ button{touch-action:manipulation}
   function get(k){
     try{var v=localStorage.getItem(k);if(v!==null)return v}catch(e){}
     var c=cookieGet(k);if(c!==null)return c;
-    return mem[k]||null;
+    return Object.prototype.hasOwnProperty.call(mem,k)?mem[k]:null;
   }
   function set(k,v){
     var ok=false;
     try{localStorage.setItem(k,v);ok=localStorage.getItem(k)===v}catch(e){}
     if(!ok){try{document.cookie=encodeURIComponent(k)+'='+encodeURIComponent(v)+'; expires=Fri, 31 Dec 9999 23:59:59 GMT; path=/; SameSite=Lax';ok=cookieGet(k)===v}catch(e){}}
-    if(!ok)mem[k]=v;
-    return ok;
+    mem[k]=v;
+    if(idb) idbWrite(k,v); else idbQueue.push([k,v]);
+    return true;
   }
   function json(k,d){try{var v=JSON.parse(get(k)||'null');return v&&typeof v==='object'?v:d}catch(e){return d}}
   function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
@@ -1720,7 +1773,39 @@ button{touch-action:manipulation}
   var duel={active:false,seed:null,opponent:'OPPONENT',code:null,opponentX:0,opponentY:0,opponentScore:0,aiT:0};
   var run={active:false,mode:'normal',coinsStart:0};
   var oldStatsBest=Math.max(Number(data.stats.best)||0,Number((old.stats||{}).best)||0);data.stats.best=oldStatsBest;
-  function save(){set(K,JSON.stringify(data));set(FRIENDS,JSON.stringify(friends));set(PROFILE,JSON.stringify(profile))}
+  function save(){
+    set(K,JSON.stringify(data));
+    set(FRIENDS,JSON.stringify(friends));
+    set(PROFILE,JSON.stringify(profile));
+    /* Also keep a copy of the complete state under one key for recovery. */
+    set('impossible-start:master:v1',JSON.stringify({data:data,profile:profile,friends:friends,savedAt:Date.now()}));
+  }
+  window.__ISX_HYDRATE=function(){
+    try{
+      var storedProfile=json(PROFILE,null);
+      var storedData=json(K,null);
+      var storedFriends=json(FRIENDS,null);
+      var master=json('impossible-start:master:v1',null);
+      if(master&&master.profile) storedProfile=master.profile;
+      if(master&&master.data) storedData=master.data;
+      if(master&&Array.isArray(master.friends)) storedFriends=master.friends;
+      if(storedProfile&&storedProfile.nickname) profile=storedProfile;
+      if(storedData){
+        data.stats=Object.assign(data.stats||{},storedData.stats||{});
+        data.achievements=Object.assign(data.achievements||{},storedData.achievements||{});
+        data.daily=Object.assign(data.daily||{},storedData.daily||{});
+        data.coins=Math.max(0,Number(storedData.coins)||0);
+        if(storedData.skins)data.skins=storedData.skins;
+      }
+      if(Array.isArray(storedFriends)) friends=storedFriends;
+      updateIdentityUI();
+      try{applySkin();}catch(e){}
+      if(profile.nickname){
+        var ns=document.getElementById('nickname-screen'),sm=document.getElementById('screen-menu');
+        if(ns)ns.classList.add('hidden');if(sm&&state==='menu')sm.classList.remove('hidden');
+      }
+    }catch(e){}
+  };
   window.__ISX_SYNC_CORE_STATS=function(coreStats,score,dist){
     if(!coreStats)return;
     data.stats.totalRuns=Math.max(Number(data.stats.totalRuns)||0,Number(coreStats.gamesPlayed)||0);
@@ -1843,7 +1928,11 @@ button{touch-action:manipulation}
     unlock('FIRST SIGNAL','Complete your first run.',true);unlock('CENTURION','Score 100 points in one run.',sc>=100);unlock('DISTANCE','Reach 250m in one run.',dist>=250);unlock('SHARD HUNTER','Collect 25 Resonance shards.',shards>=25);unlock('DAILY','Set a Daily Best.',run.mode==='daily');
     if(run.mode==='duel'&&duel.active){
       /* The live split-screen duel uses the opponent's deterministic POV. */
-      if(sc>duel.opponentScore){data.coins+=50;unlock('DUELIST','Win a duel.',true);showCoinToast('+50 COINS • DUEL WIN');}
+      if(sc>duel.opponentScore){
+        if(typeof window.__ISX_ADD_COINS==='function') window.__ISX_ADD_COINS(50,'DUEL WIN');
+        else { data.coins+=50; save(); updateIdentityUI(); showCoinToast('+50 COINS • DUEL WIN'); }
+        unlock('DUELIST','Win a duel.',true);
+      }
       duel.active=false;save();setTimeout(duelResult,220);
     }
     save();updateIdentityUI();newly.forEach(function(a,i){setTimeout(function(){notify(a[0],a[1])},i*220)});
@@ -2071,5 +2160,422 @@ button{touch-action:manipulation}
   },250);
 })();
 </script>
+
+<script id="safe-control-layer">
+(function(){
+  'use strict';
+
+  const isTouchDevice = () => matchMedia('(pointer:coarse)').matches || 'ontouchstart' in window;
+
+  function activeGame(){
+    const ids=['gameScreen','game-screen','game','playScreen'];
+    return ids.some(id=>{
+      const e=document.getElementById(id);
+      if(!e) return false;
+      const s=getComputedStyle(e);
+      return s.display!=='none' && s.visibility!=='hidden' && s.opacity!=='0';
+    });
+  }
+
+  function dispatchMove(dir, down){
+    const key = dir < 0 ? 'ArrowLeft' : 'ArrowRight';
+    const code = dir < 0 ? 'ArrowLeft' : 'ArrowRight';
+    window.dispatchEvent(new KeyboardEvent(down?'keydown':'keyup',{
+      key, code, bubbles:true, cancelable:true
+    }));
+    document.dispatchEvent(new KeyboardEvent(down?'keydown':'keyup',{
+      key, code, bubbles:true, cancelable:true
+    }));
+  }
+
+  function setMove(x, center){
+    const dx=x-center;
+    const dead=10;
+    if(Math.abs(dx)<=dead){
+      if(window.__dragMove) dispatchMove(window.__dragMove,false);
+      window.__dragMove=0;
+      return;
+    }
+    const dir=dx<0?-1:1;
+    if(window.__dragMove!==dir){
+      if(window.__dragMove) dispatchMove(window.__dragMove,false);
+      dispatchMove(dir,true);
+      window.__dragMove=dir;
+    }
+  }
+
+  function bindDrag(el){
+    if(!el || el.dataset.bound) return;
+    el.dataset.bound='1';
+    let active=false;
+    const pos=e => e.touches ? e.touches[0] : e;
+    const start=e=>{
+      if(!activeGame()) return;
+      active=true;
+      el.setPointerCapture?.(e.pointerId);
+      const p=pos(e), r=el.getBoundingClientRect();
+      setMove(p.clientX, r.left+r.width/2);
+      e.preventDefault();
+    };
+    const move=e=>{
+      if(!active) return;
+      const p=pos(e), r=el.getBoundingClientRect();
+      setMove(p.clientX, r.left+r.width/2);
+      e.preventDefault();
+    };
+    const end=e=>{
+      active=false;
+      if(window.__dragMove) dispatchMove(window.__dragMove,false);
+      window.__dragMove=0;
+      e.preventDefault();
+    };
+    el.addEventListener('pointerdown',start,{passive:false});
+    el.addEventListener('pointermove',move,{passive:false});
+    el.addEventListener('pointerup',end,{passive:false});
+    el.addEventListener('pointercancel',end,{passive:false});
+    el.addEventListener('pointerleave',e=>{ if(active) end(e); },{passive:false});
+  }
+
+  function createControls(){
+    if(!document.body) return;
+    if(!document.getElementById('pc-drag-control')){
+      const pc=document.createElement('div');
+      pc.id='pc-drag-control';
+      pc.innerHTML='<div class="drag-control-label">DRAG TO MOVE</div>';
+      document.body.appendChild(pc);
+    }
+    if(!document.getElementById('mobile-drag-control')){
+      const mob=document.createElement('div');
+      mob.id='mobile-drag-control';
+      mob.innerHTML='<div class="drag-control-label">DRAG TO MOVE</div>';
+      document.body.appendChild(mob);
+    }
+    bindDrag(document.getElementById('pc-drag-control'));
+    bindDrag(document.getElementById('mobile-drag-control'));
+  }
+
+  function getControlMode(){
+    try { return localStorage.getItem('impossibleStart_mobileControl') || 'joystick'; }
+    catch(e){ return 'joystick'; }
+  }
+
+  function syncVisibility(){
+    const pc=document.getElementById('pc-drag-control');
+    const mob=document.getElementById('mobile-drag-control');
+    if(!pc || !mob) return;
+    const touch=isTouchDevice();
+    const mode=getControlMode();
+    pc.style.display=(!touch && activeGame())?'block':'none';
+    mob.style.display=(touch && activeGame() && mode==='drag')?'block':'none';
+  }
+
+  // Swipe mode: horizontal finger movement anywhere on the lower gameplay area.
+  let sx=0, sy=0, swipeActive=false;
+  document.addEventListener('touchstart',e=>{
+    if(!activeGame() || getControlMode()!=='swipe' || !e.touches[0]) return;
+    const t=e.touches[0];
+    if(t.clientY < innerHeight*0.55) return;
+    sx=t.clientX; sy=t.clientY; swipeActive=true;
+  },{passive:true});
+  document.addEventListener('touchmove',e=>{
+    if(!swipeActive || !e.touches[0]) return;
+    const t=e.touches[0], dx=t.clientX-sx;
+    if(Math.abs(dx)>18){
+      const dir=dx<0?-1:1;
+      if(window.__swipeDir!==dir){
+        if(window.__swipeDir) dispatchMove(window.__swipeDir,false);
+        dispatchMove(dir,true); window.__swipeDir=dir;
+      }
+    }
+  },{passive:true});
+  document.addEventListener('touchend',()=>{
+    swipeActive=false;
+    if(window.__swipeDir) dispatchMove(window.__swipeDir,false);
+    window.__swipeDir=0;
+  },{passive:true});
+
+  // Mobile settings helper: expose a tiny stable API so the existing Settings
+  // UI can change modes without depending on its internal implementation.
+  window.setMobileControlMode=function(mode){
+    mode=['joystick','drag','swipe'].includes(mode)?mode:'joystick';
+    try{localStorage.setItem('impossibleStart_mobileControl',mode);}catch(e){}
+    document.documentElement.dataset.mobileControl=mode;
+    syncVisibility();
+  };
+  window.getMobileControlMode=function(){ return getControlMode(); };
+
+  // PC always has all three input methods enabled; drag is additive.
+  // Existing joystick/swipe/keyboard listeners remain untouched.
+  createControls();
+  syncVisibility();
+  addEventListener('resize',syncVisibility);
+  addEventListener('orientationchange',syncVisibility);
+  setInterval(syncVisibility,500);
+})();
+</script>
+
+
+<style id="final-stats-coins-settings-fix">
+/* Coins: fixed to the bottom-left corner during gameplay */
+#coin-display-fixed {
+  position: fixed !important;
+  left: 18px !important;
+  bottom: 18px !important;
+  top: auto !important;
+  right: auto !important;
+  z-index: 100000 !important;
+  padding: 9px 14px !important;
+  border-radius: 14px !important;
+  background: rgba(5,15,30,.90) !important;
+  border: 2px solid rgba(55,170,255,.75) !important;
+  color: #4db8ff !important;
+  font-weight: 900 !important;
+  text-shadow: 0 0 10px rgba(50,170,255,.95) !important;
+  pointer-events: none !important;
+}
+/* Settings text: white instead of black */
+#settingsScreen *, #settings-screen *, .settings-screen *,
+#settingsPanel *, .settings-panel *, [id*="setting"] * {
+  color: #ffffff !important;
+  text-shadow: 0 0 7px rgba(50,150,255,.45) !important;
+}
+</style>
+
+<script id="final-stats-coins-settings-script">
+(function(){
+  'use strict';
+
+  var SAVE_KEYS = ['impossibleStartSave','impossibleStart_save','gameSave','saveData'];
+  var MASTER = 'impossibleStartSave';
+
+  function read(){
+    for(var i=0;i<SAVE_KEYS.length;i++){
+      try{
+        var raw=localStorage.getItem(SAVE_KEYS[i]);
+        if(raw){
+          var o=JSON.parse(raw);
+          if(o && typeof o==='object') return o;
+        }
+      }catch(e){}
+    }
+    return {};
+  }
+
+  function save(o){
+    try{ localStorage.setItem(MASTER, JSON.stringify(o)); }catch(e){}
+  }
+
+  function n(v){
+    var x=Number(v);
+    return Number.isFinite(x) ? x : 0;
+  }
+
+  function ensure(){
+    var s=read();
+    s.stats=s.stats||s.statistics||{};
+    if(s.bestScore==null) s.bestScore=n(s.stats.bestScore);
+    if(s.gamesPlayed==null) s.gamesPlayed=n(s.stats.gamesPlayed);
+    if(s.duelWins==null) s.duelWins=n(s.stats.duelWins);
+    if(s.resonanceCollected==null) s.resonanceCollected=n(s.stats.resonanceCollected);
+    if(s.coins==null) s.coins=n(s.stats.coins);
+    s.stats.bestScore=n(s.bestScore);
+    s.stats.gamesPlayed=n(s.gamesPlayed);
+    s.stats.duelWins=n(s.duelWins);
+    s.stats.resonanceCollected=n(s.resonanceCollected);
+    s.stats.coins=n(s.coins);
+    save(s);
+    return s;
+  }
+
+  function updateCoin(){
+    var old=document.getElementById('coin-display-fixed');
+    if(!old){
+      old=document.createElement('div');
+      old.id='coin-display-fixed';
+      document.body.appendChild(old);
+    }
+    var s=ensure();
+    old.textContent='🪙 '+n(s.coins)+' COINS';
+    var gameVisible=false;
+    ['gameScreen','game-screen','game','playScreen'].forEach(function(id){
+      var e=document.getElementById(id);
+      if(e){
+        var cs=getComputedStyle(e);
+        if(cs.display!=='none' && cs.visibility!=='hidden') gameVisible=true;
+      }
+    });
+    old.style.display=gameVisible?'block':'none';
+  }
+
+  /* Stable stats API for the existing game */
+  window.updateGameStats=function(values){
+    var s=ensure();
+    values=values||{};
+    Object.keys(values).forEach(function(k){
+      if(k==='coins') s.coins=n(values[k]);
+      else if(k==='bestScore') s.bestScore=n(values[k]);
+      else if(k==='gamesPlayed') s.gamesPlayed=n(values[k]);
+      else if(k==='duelWins') s.duelWins=n(values[k]);
+      else if(k==='resonanceCollected') s.resonanceCollected=n(values[k]);
+    });
+    s.stats.bestScore=n(s.bestScore);
+    s.stats.gamesPlayed=n(s.gamesPlayed);
+    s.stats.duelWins=n(s.duelWins);
+    s.stats.resonanceCollected=n(s.resonanceCollected);
+    s.stats.coins=n(s.coins);
+    save(s);
+    updateCoin();
+  };
+
+  window.addCoins=function(amount){
+    var s=ensure();
+    s.coins=Math.max(0,n(s.coins)+n(amount));
+    s.stats.coins=s.coins;
+    save(s);
+    updateCoin();
+    return s.coins;
+  };
+
+  window.getSavedGameStats=function(){
+    var s=ensure();
+    return {
+      coins:n(s.coins),
+      bestScore:n(s.bestScore),
+      gamesPlayed:n(s.gamesPlayed),
+      duelWins:n(s.duelWins),
+      resonanceCollected:n(s.resonanceCollected)
+    };
+  };
+
+  /* Patch common statistics displays without replacing existing GUI. */
+  function fillStats(){
+    var s=ensure();
+    var map={
+      bestScore:s.bestScore,
+      highScore:s.bestScore,
+      gamesPlayed:s.gamesPlayed,
+      roundsPlayed:s.gamesPlayed,
+      duelWins:s.duelWins,
+      wins:s.duelWins,
+      resonanceCollected:s.resonanceCollected,
+      totalResonance:s.resonanceCollected,
+      coins:s.coins
+    };
+    Object.keys(map).forEach(function(key){
+      document.querySelectorAll('[data-stat="'+key+'"], [data-stat-value="'+key+'"], #'+key).forEach(function(e){
+        if(e && !e.matches('input,textarea,select')) e.textContent=String(map[key]);
+      });
+    });
+  }
+
+  function tick(){
+    updateCoin();
+    fillStats();
+  }
+
+  ensure();
+  if(document.readyState==='loading'){
+    document.addEventListener('DOMContentLoaded',tick);
+  }else tick();
+
+  window.addEventListener('storage',tick);
+  window.addEventListener('focus',tick);
+  setInterval(tick,1000);
+})();
+</script>
+
+
+<style id="statistics-gui-final-css">
+#isx-stats-screen{
+  position:fixed;inset:0;z-index:10050;display:none;align-items:center;justify-content:center;
+  background:radial-gradient(ellipse at center,rgba(20,10,40,.45),rgba(3,4,9,.96));
+  pointer-events:auto;
+}
+#isx-stats-screen.show{display:flex}
+#isx-stats-panel{
+  width:min(720px,94vw);max-height:88vh;overflow:auto;padding:30px;
+  border:1px solid rgba(53,231,255,.35);background:rgba(8,12,24,.96);
+  box-shadow:0 0 35px rgba(53,231,255,.12);text-align:center;
+}
+#isx-stats-panel h2{margin:0 0 22px;color:#fff;text-shadow:0 0 14px #35e7ff;letter-spacing:6px}
+.isx-stat-grid-fixed{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.isx-stat-card-fixed{padding:18px 10px;border:1px solid rgba(53,231,255,.22);background:rgba(53,231,255,.035)}
+.isx-stat-card-fixed .v{font-size:28px;font-weight:900;color:#4db8ff;text-shadow:0 0 12px #35e7ff}
+.isx-stat-card-fixed .l{margin-top:6px;font-size:10px;letter-spacing:2px;color:#fff}
+@media(max-width:600px){#isx-stats-panel{padding:22px 14px}.isx-stat-grid-fixed{grid-template-columns:1fr 1fr}.isx-stat-card-fixed .v{font-size:23px}}
+</style>
+<script id="statistics-gui-final-script">
+(function(){
+  'use strict';
+
+  function num(v){var n=Number(v);return Number.isFinite(n)?n:0}
+  function parseKey(k){
+    try{var r=localStorage.getItem(k);return r?JSON.parse(r):null}catch(e){return null}
+  }
+  function readStats(){
+    var d=parseKey('impossible-start:upgrade:v3')||{};
+    var c=parseKey('impossible-start:data:v2')||{};
+    var s=d.stats||{};
+    var cs=c.stats||{};
+    return {
+      best:Math.max(num(s.best),num(cs.best)),
+      runs:Math.max(num(s.totalRuns),num(cs.gamesPlayed)),
+      distance:Math.max(num(s.bestDistance),num(cs.totalDistance)),
+      shards:Math.max(num(s.obstaclesDodged),num(cs.resonanceCollected)),
+      score:num(s.totalScore)||num(cs.totalScore),
+      coins:num(d.coins)||num((d.stats||{}).coins)||num((c.stats||{}).coins)
+    };
+  }
+  function ensureScreen(){
+    if(document.getElementById('isx-stats-screen'))return;
+    var x=document.createElement('div');
+    x.id='isx-stats-screen';
+    x.innerHTML='<div id="isx-stats-panel"><h2>STATISTICS</h2><div class="isx-stat-grid-fixed">'+
+      '<div class="isx-stat-card-fixed"><div class="v" id="sg-best">0</div><div class="l">BEST SCORE</div></div>'+
+      '<div class="isx-stat-card-fixed"><div class="v" id="sg-coins">0</div><div class="l">COINS</div></div>'+
+      '<div class="isx-stat-card-fixed"><div class="v" id="sg-runs">0</div><div class="l">RUNS PLAYED</div></div>'+
+      '<div class="isx-stat-card-fixed"><div class="v" id="sg-distance">0m</div><div class="l">BEST DISTANCE</div></div>'+
+      '<div class="isx-stat-card-fixed"><div class="v" id="sg-shards">0</div><div class="l">RESONANCE</div></div>'+
+      '<div class="isx-stat-card-fixed"><div class="v" id="sg-total">0</div><div class="l">TOTAL SCORE</div></div>'+
+      '</div><div style="margin-top:20px"><button class="ghost" id="sg-close">CLOSE</button></div></div>';
+    document.body.appendChild(x);
+    document.getElementById('sg-close').addEventListener('click',function(e){
+      e.preventDefault();e.stopPropagation();x.classList.remove('show');
+    });
+    x.addEventListener('click',function(e){if(e.target===x)x.classList.remove('show')});
+  }
+  function openStats(e){
+    if(e){e.preventDefault();e.stopPropagation();}
+    ensureScreen();
+    var s=readStats();
+    document.getElementById('sg-best').textContent=Math.floor(s.best);
+    document.getElementById('sg-coins').textContent=Math.floor(s.coins);
+    document.getElementById('sg-runs').textContent=Math.floor(s.runs);
+    document.getElementById('sg-distance').textContent=Math.floor(s.distance)+'m';
+    document.getElementById('sg-shards').textContent=Math.floor(s.shards);
+    document.getElementById('sg-total').textContent=Math.floor(s.score);
+    document.getElementById('isx-stats-screen').classList.add('show');
+  }
+
+  function bind(){
+    var b=document.getElementById('btn-stats');
+    if(!b || b.dataset.statsFinalBound)return;
+    b.dataset.statsFinalBound='1';
+    b.addEventListener('click',openStats,true);
+    b.addEventListener('pointerup',function(e){if(e.pointerType==='touch')openStats(e)},true);
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bind);else bind();
+  setInterval(bind,500);
+  window.__OPEN_STATISTICS_GUI=openStats;
+})();
+</script>
+
 </body>
 </html>
+
+<style id="blue-text-contrast-fix">
+body, button, input, select, textarea, .menu-btn, .panel, .card, .stat,
+.setting, .achievement, .skin-card, .friend-card, .duel-card {
+  text-shadow: 0 0 7px rgba(40,150,255,.35);
+}
+</style>
