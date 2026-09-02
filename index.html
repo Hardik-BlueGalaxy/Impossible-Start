@@ -358,8 +358,9 @@ button{touch-action:manipulation}
         <label class="switch"><input type="checkbox" id="s-invertY"><span class="slider-toggle"></span></label></div>
       <div class="set-row"><span class="set-label">Touch Style</span>
         <div class="seg" id="seg-touchMode">
+          <button data-value="joystick">JOYSTICK</button>
           <button data-value="drag">DRAG</button>
-          <button data-value="zones">ZONES</button>
+          <button data-value="swipe">SWIPE</button>
         </div>
       </div>
       <div class="set-row"><span class="set-label">Joystick Size</span><input type="range" id="s-joystickSize" class="range" min="110" max="210" step="5"></div>
@@ -493,7 +494,7 @@ button{touch-action:manipulation}
 
   var DEFAULT_SETTINGS = {
     difficulty:'normal', musicOn:true, musicVol:0.5, sfxOn:true, sfxVol:0.7,
-    sensitivity:1.0, invertY:false, touchMode:'drag', theme:'nova',
+    sensitivity:1.0, invertY:false, touchMode:'joystick', theme:'nova',
     shakeIntensity:'high', hitFlash:true, fovPulse:true, trailDensity:'med',
     starDensity:'med', showFps:false, reducedMotion:false, haptics:true, showGuideRing:true,
     gateChaos:false, speedSurge:false, perfectRun:false, musicRate:1, joystickSize:156, joystickSensitivity:1, joystickDeadzone:0.12, joystickPosition:'bottom-left', joystickHandedness:'left'
@@ -553,13 +554,54 @@ button{touch-action:manipulation}
   var shipGlowGeo = new THREE.OctahedronGeometry(0.85,0);
   shipGlowGeo.scale(1,0.55,1.8);
   var shipGlowMat = new THREE.MeshBasicMaterial({color:0x35e7ff, transparent:true, opacity:0.22, blending:THREE.AdditiveBlending, depthWrite:false});
-  shipGroup.add(new THREE.Mesh(shipGlowGeo, shipGlowMat));
+  var shipGlowMesh = new THREE.Mesh(shipGlowGeo, shipGlowMat); shipGroup.add(shipGlowMesh);
 
   var guideRingMat = new THREE.MeshBasicMaterial({color:0x35e7ff, transparent:true, opacity:0.4, side:THREE.DoubleSide});
   var guideRingMesh = new THREE.Mesh(new THREE.RingGeometry(SHIP_RADIUS+0.55, SHIP_RADIUS+0.65, 32), guideRingMat);
   shipGroup.add(guideRingMesh);
 
   scene.add(shipGroup);
+
+  // Public bridge for the upgrade layer: shipGroup/shipMesh live inside this
+  // core IIFE, so the Skin Lab must use this function instead of reaching
+  // into those private variables directly.
+  window.__ISX_RENDER_SKIN=function(shape,primary){
+    try{
+      function makeGeo(kind,glow){
+        var g;
+        if(kind==='wraith') g=new THREE.TetrahedronGeometry(glow?.95:.72,0);
+        else if(kind==='spear') g=new THREE.ConeGeometry(glow?.78:.60,glow?2.15:1.75,4);
+        else if(kind==='manta') {g=new THREE.OctahedronGeometry(glow?.95:.72,0);g.scale(1.9,.38,1.0);}
+        else if(kind==='arc') {g=new THREE.TorusGeometry(glow?.70:.54,glow?.20:.15,10,20,Math.PI*1.55);g.rotateY(Math.PI/2);}
+        else if(kind==='crown') g=new THREE.CylinderGeometry(glow?.72:.55,glow?.95:.72,glow?.95:.72,6,1);
+        else if(kind==='talon') g=new THREE.ConeGeometry(glow?.90:.68,glow?1.95:1.55,3);
+        else if(kind==='crystal') g=new THREE.DodecahedronGeometry(glow?.92:.72,0);
+        else g=new THREE.OctahedronGeometry(glow?.72:.58,0);
+        if(kind!=='manta' && kind!=='arc') g.scale(1,.55,1.8);
+        return g;
+      }
+      var c=new THREE.Color(Number(primary)||0x35e7ff);
+      if(shipMesh){
+        if(shipMesh.geometry)shipMesh.geometry.dispose();
+        shipMesh.geometry=makeGeo(shape,false);
+        if(shipMesh.material)shipMesh.material.dispose();
+        shipMesh.material=new THREE.MeshBasicMaterial({color:c,transparent:false,opacity:1});
+        shipMesh.visible=true;
+      }
+      if(shipGlowMesh){
+        if(shipGlowMesh.geometry)shipGlowMesh.geometry.dispose();
+        shipGlowMesh.geometry=makeGeo(shape,true);
+        if(shipGlowMesh.material)shipGlowMesh.material.dispose();
+        shipGlowMesh.material=new THREE.MeshBasicMaterial({color:c,transparent:true,opacity:.20,blending:THREE.AdditiveBlending,depthWrite:false});
+        shipGlowMesh.visible=true;
+      }
+      if(guideRingMat)guideRingMat.color.copy(c);
+      ghostMeshes.forEach(function(g){if(g.material&&g.material.color)g.material.color.copy(c)});
+      shipGroup.userData.skinShape=shape;
+      shipGroup.userData.skinPrimary=Number(primary)||0x35e7ff;
+      return true;
+    }catch(e){console.error('Impossible Start render skin bridge failed:',e);return false;}
+  };
 
   var GHOST_MAX = 14;
   var ghostMeshes = [];
@@ -586,10 +628,16 @@ button{touch-action:manipulation}
     document.documentElement.style.setProperty('--cyan', t.css.cyan);
     document.documentElement.style.setProperty('--magenta', t.css.magenta);
     document.documentElement.style.setProperty('--amber', t.css.amber);
-    shipMat.color.setHex(t.hex.primary);
-    shipGlowMat.color.setHex(t.hex.primary);
-    guideRingMat.color.setHex(t.hex.primary);
-    ghostMeshes.forEach(function(g){ g.material.color.setHex(t.hex.primary); });
+    var skinPrimary=t.hex.primary;
+    try{if(typeof window.__ISX_GET_SKIN_PRIMARY==='function')skinPrimary=window.__ISX_GET_SKIN_PRIMARY()||skinPrimary}catch(e){}
+    shipMat.color.setHex(skinPrimary);
+    shipGlowMat.color.setHex(skinPrimary);
+    guideRingMat.color.setHex(skinPrimary);
+    ghostMeshes.forEach(function(g){ g.material.color.setHex(skinPrimary); });
+    try{
+      if(typeof window.__ISX_RENDER_SKIN==='function' && typeof window.__ISX_GET_SKIN_SHAPE==='function')
+        window.__ISX_RENDER_SKIN(window.__ISX_GET_SKIN_SHAPE(),skinPrimary);
+    }catch(e){}
     rings.forEach(function(r){
       r.mat.color.setHex(t.hex.primary);
       r.ringMat.color.setHex(t.hex.accent);
@@ -860,7 +908,7 @@ button{touch-action:manipulation}
     seededRng = window.__ISX_DAILY_SEED ? mulberry32(hashSeed(String(window.__ISX_DAILY_SEED)+'|'+settings.difficulty)) : null;
     diff = DIFFICULTIES[settings.difficulty] || DIFFICULTIES.normal;
     px=0; py=0; vx=0; vy=0;
-    score=0; distance=0; lives=diff.lives; multiplier=1;
+    score=0; distance=0; lives=window.__ISX_DUEL_MODE ? 3 : diff.lives; multiplier=1;
     speed=diff.baseSpeed; holeRadius=diff.holeStart;
     resonance=0; overdrive=false; overdriveTimer=0;
     shakeTime=0;
@@ -902,6 +950,11 @@ button{touch-action:manipulation}
 
   function gameOver(){
     document.body.classList.remove('mobile-playing');
+    if(window.__ISX_DUEL_MODE && typeof window.__ISX_DUEL_FINISH==='function'){
+      try{
+        if(window.__ISX_DUEL_FINISH()===true) return;
+      }catch(e){}
+    }
     if(window.__ISX_DUEL_MODE) window.__ISX_DUEL_MODE=false;
     resetJoystick();
     state = 'over';
@@ -1314,7 +1367,7 @@ button{touch-action:manipulation}
   setupSegment('seg-joystickPosition','joystickPosition',applyJoystickLayout);
   setupSegment('seg-joystickHandedness','joystickHandedness',applyJoystickLayout);
   setupToggle('s-invertY','invertY');
-  setupSegment('seg-touchMode','touchMode');
+  setupSegment('seg-touchMode','touchMode',function(){try{window.setMobileControlMode(settings.touchMode)}catch(e){}});
   setupSegment('seg-theme','theme', applyTheme);
   setupSegment('seg-shakeIntensity','shakeIntensity');
   setupToggle('s-hitFlash','hitFlash');
@@ -1504,7 +1557,13 @@ button{touch-action:manipulation}
           hitFlash();
           haptic();
           beep(120,0.25,'sawtooth',0.2);
-          if(settings.perfectRun || lives<=0){ gameOver(); }
+          var duelDeathHandled = false;
+          try{
+            if(window.__ISX_DUEL_MODE && typeof window.__ISX_DUEL_ON_DEATH==='function'){
+              duelDeathHandled = !!window.__ISX_DUEL_ON_DEATH();
+            }
+          }catch(e){}
+          if(!duelDeathHandled && (settings.perfectRun || lives<=0)){ gameOver(); }
         }
       }
 
@@ -1733,8 +1792,9 @@ button{touch-action:manipulation}
   function hash(s){var h=2166136261;for(var i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return (h>>>0).toString(36).toUpperCase()}
   function b64(s){try{return btoa(unescape(encodeURIComponent(s))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')}catch(e){return ''}}
   function ub64(s){try{var p=String(s).replace(/-/g,'+').replace(/_/g,'/');while(p.length%4)p+='=';return decodeURIComponent(escape(atob(p)))}catch(e){return ''}}
-  function profileCode(nick){return 'ISX-'+b64(nick||'PLAYER')+'-'+hash(nick||'PLAYER').slice(-3)}
+  function profileCode(nick){if(String(nick||'').toUpperCase()==='HARDIK')return 'ISX-SEFSRE1L-OP8';return 'ISX-'+b64(nick||'PLAYER')+'-'+hash(nick||'PLAYER').slice(-3)}
   function decodeFriendCode(code){
+    if(String(code||'').trim().toUpperCase()==='ISX-SEFSRE1L-OP8')return 'HARDIK';
     var m=String(code||'').trim().match(/^ISX-([A-Za-z0-9_-]+)-([A-Za-z0-9]{3})$/i);
     if(!m)return '';
     var n=ub64(m[1]);
@@ -1762,6 +1822,12 @@ button{touch-action:manipulation}
     data.stats.bestDistance=Math.max(Number(data.stats.bestDistance)||0,Number(coreSaved.stats.totalDistance)||0);
   }
   data.achievements=data.achievements||{}; data.daily=data.daily||{};
+  data.social=data.social||{pending:[],requests:[],messages:{},gifts:[]};
+  if(!Array.isArray(data.social.pending))data.social.pending=[];
+  if(!Array.isArray(data.social.requests))data.social.requests=[];
+  if(!data.social.messages||typeof data.social.messages!=='object')data.social.messages={};
+  if(!Array.isArray(data.social.gifts))data.social.gifts=[];
+  data.redeemedCodes=Array.isArray(data.redeemedCodes)?data.redeemedCodes:[];
   data.coins=Math.max(0,Number(data.coins)||0);
   data.skins=data.skins||{owned:['default'],selected:'default'};
   if(!Array.isArray(data.skins.owned)||!data.skins.owned.length)data.skins.owned=['default'];
@@ -1858,40 +1924,236 @@ button{touch-action:manipulation}
 
   /* Make the Friend UI bidirectional: code -> nickname and nickname -> code. */
   function friendsView(){
-    var rows=friends.length?friends.map(function(f,i){return '<div class="isx-friend"><span><b>'+esc(f.nickname)+'</b><br><span class="isx-muted">'+esc(f.code)+'</span></span><button class="ghost isx-danger" data-rm="'+i+'">REMOVE</button></div>'}).join(''):'<div class="isx-note">No local friends yet.</div>';
-    overlay('<h2>LOCAL FRIENDS</h2><p>Share your Friend Code with real-life friends. Entering a code automatically resolves the nickname.</p><input class="isx-input" id="isx-friend-code" maxlength="40" placeholder="ISX-FRIEND-CODE"><input class="isx-input" id="isx-friend-name" maxlength="16" style="margin-top:8px" placeholder="NICKNAME (AUTO-FILLED)" readonly><div id="isx-friend-status" class="isx-note">Paste a valid Friend Code.</div><div class="isx-row"><button class="action" id="isx-add-friend">ADD FRIEND</button></div><div class="isx-card" style="margin-top:14px">'+rows+'</div><div class="isx-row"><button class="ghost" id="isx-friend-close">CLOSE</button></div>');
-    var codeEl=document.getElementById('isx-friend-code'),nameEl=document.getElementById('isx-friend-name'),st=document.getElementById('isx-friend-status');
-    codeEl.oninput=function(){var n=decodeFriendCode(codeEl.value);nameEl.value=n;st.textContent=n?'FOUND ACCOUNT • '+n:'Code not recognized.'};
-    document.getElementById('isx-add-friend').onclick=function(){var code=codeEl.value.trim(),n=decodeFriendCode(code);if(!n||n===profile.nickname){st.textContent='Enter a valid friend code belonging to another player.';return}if(!friends.some(function(f){return f.code===code})){friends.push({code:code,nickname:n});save()}friendsView()};
-    document.getElementById('isx-friend-close').onclick=closeOverlay;
-    document.querySelectorAll('[data-rm]').forEach(function(b){b.onclick=function(){friends.splice(Number(b.dataset.rm),1);save();friendsView()}});
+    if(!profilePrompt())return;
+    data.social=data.social||{pending:[],requests:[],messages:{},gifts:[]};
+    data.social.pending=Array.isArray(data.social.pending)?data.social.pending:[];
+    data.social.requests=Array.isArray(data.social.requests)?data.social.requests:[];
+    data.social.messages=data.social.messages&&typeof data.social.messages==='object'?data.social.messages:{};
+    data.social.gifts=Array.isArray(data.social.gifts)?data.social.gifts:[];
+    if(Array.isArray(data.social.challenges)&&!data.social.gifts.length)data.social.gifts=data.social.challenges.map(function(c){return {to:c.to,nickname:c.nickname,type:c.reward==='skin'?'skin':'coins',amount:c.reward==='skin'?0:25,skin:c.skin,at:c.at,status:'legacy'}});
+
+    function tabButton(id,label,active){return '<button class="'+(active?'action':'ghost')+'" id="'+id+'">'+label+'</button>'}
+    function friendRows(){
+      if(!friends.length)return '<div class="isx-note">No friends yet. Use FIND PEOPLE to add someone by Friend Code.</div>';
+      return friends.map(function(f,i){
+        var key=f.code||('friend-'+i), msgs=(data.social.messages[key]||[]).length;
+        return '<div class="isx-friend"><span><b>'+esc(f.nickname)+'</b><br><span class="isx-muted">'+esc(f.code||'')+(msgs?' • '+msgs+' MSG':'')+'</span></span>'+
+          '<span class="friend-actions"><button class="ghost" data-chat="'+i+'">CHAT</button><button class="ghost" data-gift="'+i+'">GIFT</button><button class="ghost isx-danger" data-rm="'+i+'">REMOVE</button></span></div>';
+      }).join('');
+    }
+    function requestRows(){
+      var rs=data.social.pending;
+      return rs.length?rs.map(function(r,i){
+        return '<div class="isx-friend"><span><b>'+esc(r.nickname)+'</b><br><span class="isx-muted">'+esc(r.code)+'</span></span>'+
+          '<span class="friend-actions"><button class="action" data-accept="'+i+'">ACCEPT</button><button class="ghost isx-danger" data-decline="'+i+'">DECLINE</button></span></div>';
+      }).join(''):'<div class="isx-note">No pending requests.</div>';
+    }
+
+    function render(mode){
+      var body='';
+      if(mode==='friends'){
+        body='<div class="isx-card"><b>YOUR FRIEND CODE</b><div class="isx-code">'+esc(profileCode(profile.nickname))+'</div><p>Only people you accept appear in Friends.</p></div><div class="isx-card" style="margin-top:10px">'+friendRows()+'</div>';
+      }else if(mode==='pending'){
+        body='<div class="isx-card"><b>PENDING REQUESTS</b>'+requestRows()+'</div>';
+      }else if(mode==='gifts'){
+        var gifts=data.social.gifts||[];
+        body='<div class="isx-card"><b>GIFT HISTORY</b>'+ (gifts.length?gifts.slice().reverse().map(function(g,i){var label=g.type==='skin'?((SKINS.find(function(s){return s.id===g.skin})||{}).name||'SKIN'):(String(g.amount)+' COINS');return '<div class="isx-friend"><span><b>'+esc(g.nickname)+'</b><br><span class="isx-muted">'+esc(label)+' • '+esc(g.status||'sent')+'</span></span><span class="isx-muted">SENT</span></div>'}).join(''):'<div class="isx-note">No gifts sent yet.</div>')+'</div>';
+      }else if(mode==='find'){
+        body='<div class="isx-card"><b>FIND PEOPLE</b><p>Enter a Friend Code. A request is created first; it does not instantly add the person.</p><input class="isx-input" id="isx-find-code" maxlength="120" placeholder="ISX-FRIEND-CODE"><input class="isx-input" id="isx-find-name" readonly style="margin-top:8px" placeholder="PLAYER NAME"><div id="isx-find-status" class="isx-note">Enter a valid code.</div><div class="isx-row"><button class="action" id="isx-send-request">SEND REQUEST</button></div></div>';
+      }
+      overlay('<h2>FRIENDS</h2><div class="isx-row" style="margin-top:0">'+
+        tabButton('isx-tab-friends','FRIENDS',mode==='friends')+
+        tabButton('isx-tab-pending','PENDING REQUESTS'+(data.social.pending.length?' ('+data.social.pending.length+')':''),mode==='pending')+
+        tabButton('isx-tab-find','FIND PEOPLE',mode==='find')+
+        tabButton('isx-tab-gifts','GIFTS',mode==='gifts')+
+        '</div>'+body+'<div class="isx-row"><button class="ghost" id="isx-friend-close">CLOSE</button></div>');
+
+      document.getElementById('isx-friend-close').onclick=closeOverlay;
+      document.getElementById('isx-tab-friends').onclick=function(){render('friends')};
+      document.getElementById('isx-tab-pending').onclick=function(){render('pending')};
+      document.getElementById('isx-tab-find').onclick=function(){render('find')};
+      document.getElementById('isx-tab-gifts').onclick=function(){render('gifts')};
+
+      if(mode==='find'){
+        var ce=document.getElementById('isx-find-code'),ne=document.getElementById('isx-find-name'),st=document.getElementById('isx-find-status');
+        ce.oninput=function(){
+          var n=decodeFriendCode(ce.value.trim());ne.value=n;
+          st.textContent=n?(n===profile.nickname?'That is your own code.':'PLAYER FOUND • REQUEST READY'):'Code not recognized.';
+        };
+        document.getElementById('isx-send-request').onclick=function(){
+          var code=ce.value.trim(),n=decodeFriendCode(code);
+          if(!n||n===profile.nickname){st.textContent='Enter another player’s valid Friend Code.';return}
+          if(friends.some(function(f){return f.code===code})){st.textContent='Already friends.';return}
+          if(!data.social.pending.some(function(r){return r.code===code})){
+            data.social.pending.push({code:code,nickname:n});
+            save();
+          }
+          st.textContent='FRIEND REQUEST PENDING • '+n;
+          render('pending');
+        };
+      }else if(mode==='friends'){
+        document.querySelectorAll('[data-rm]').forEach(function(b){b.onclick=function(){friends.splice(Number(b.dataset.rm),1);save();render('friends')}});
+        document.querySelectorAll('[data-chat]').forEach(function(b){b.onclick=function(){chatView(friends[Number(b.dataset.chat)])}});
+        document.querySelectorAll('[data-gift]').forEach(function(b){b.onclick=function(){giftView(friends[Number(b.dataset.gift)])}});
+        
+      }else{
+        document.querySelectorAll('[data-accept]').forEach(function(b){b.onclick=function(){
+          var r=data.social.pending.splice(Number(b.dataset.accept),1)[0];
+          if(r&&!friends.some(function(f){return f.code===r.code}))friends.push({code:r.code,nickname:r.nickname});
+          save();render('friends');
+        }});
+        document.querySelectorAll('[data-decline]').forEach(function(b){b.onclick=function(){data.social.pending.splice(Number(b.dataset.decline),1);save();render('pending')}});
+      }
+    }
+    render('friends');
   }
+
+  function chatView(friend){
+    if(!friend)return;
+    data.social=data.social||{pending:[],requests:[],messages:{},gifts:[]};
+    var key=friend.code||friend.nickname;
+    var msgs=Array.isArray(data.social.messages[key])?data.social.messages[key]:[];
+    var rows=msgs.length?msgs.map(function(m){return '<div class="isx-card"><b>'+esc(m.from)+'</b><div style="margin-top:4px;color:#dce8f5">'+esc(m.text)+'</div></div>'}).join(''):'<div class="isx-note">No messages yet.</div>';
+    overlay('<h2>CHAT • '+esc(friend.nickname)+'</h2><div style="max-height:42vh;overflow:auto;text-align:left">'+rows+'</div><textarea class="isx-input" id="isx-chat-input" maxlength="300" rows="3" style="margin-top:10px;text-align:left" placeholder="Message this friend..."></textarea><div class="isx-row"><button class="action" id="isx-chat-send">SEND</button><button class="ghost" id="isx-chat-back">BACK</button></div><div class="isx-note">Chat is limited to accepted friends.</div>');
+    document.getElementById('isx-chat-send').onclick=function(){
+      var text=(document.getElementById('isx-chat-input').value||'').trim();if(!text)return;
+      if(!data.social.messages[key])data.social.messages[key]=[];
+      data.social.messages[key].push({from:profile.nickname,text:text,at:Date.now()});
+      save();chatView(friend);
+    };
+    document.getElementById('isx-chat-back').onclick=function(){friendsView()};
+  }
+
+  function giftView(friend){
+    if(!friend)return;
+    var owned=data.skins.owned.filter(function(id){return id!=='default'});
+    var opts='<option value="">SELECT SKIN</option>'+owned.map(function(id){var s=SKINS.find(function(x){return x.id===id});return s?'<option value="'+esc(id)+'">'+esc(s.name)+'</option>':''}).join('');
+    overlay('<h2>GIFT • '+esc(friend.nickname)+'</h2><div class="isx-note">Gift actions are saved to your local gift history. True cross-device delivery requires an online account/server.</div><div class="isx-card"><b>COINS</b><input class="isx-input" id="isx-gift-coins" type="number" min="0" max="'+Math.floor(data.coins)+'" value="0" style="margin-top:8px"><div class="isx-row"><button class="action" id="isx-send-coins">GIFT COINS</button></div></div><div class="isx-card" style="margin-top:10px"><b>SKIN</b><select class="isx-input" id="isx-gift-skin" style="margin-top:8px">'+opts+'</select><div class="isx-row"><button class="action" id="isx-send-skin">GIFT SKIN</button></div></div><div class="isx-row"><button class="ghost" id="isx-gift-close">CLOSE</button></div>');
+    document.getElementById('isx-gift-close').onclick=closeOverlay;
+    document.getElementById('isx-send-coins').onclick=function(){
+      var amount=Math.floor(Number(document.getElementById('isx-gift-coins').value)||0);
+      if(amount<=0||amount>data.coins)return showCoinToast('INVALID COIN GIFT');
+      data.coins-=amount;
+      data.social.gifts=data.social.gifts||[];
+      data.social.gifts.push({to:friend.code,nickname:friend.nickname,type:'coins',amount:amount,at:Date.now(),status:'sent'});
+      save();updateIdentityUI();showCoinToast('GIFT SENT • '+amount+' COINS');closeOverlay();
+    };
+    document.getElementById('isx-send-skin').onclick=function(){
+      var id=document.getElementById('isx-gift-skin').value;if(!id)return;
+      var ix=data.skins.owned.indexOf(id);if(ix<0)return;
+      data.skins.owned.splice(ix,1);if(data.skins.selected===id)data.skins.selected='default';
+      data.social.gifts=data.social.gifts||[];
+      data.social.gifts.push({to:friend.code,nickname:friend.nickname,type:'skin',skin:id,at:Date.now(),status:'sent'});
+      save();if(window.__ISX_APPLY_SKIN)window.__ISX_APPLY_SKIN();showCoinToast('SKIN GIFT SENT');closeOverlay();
+    };
+  }
+
 
   function profileView(){
     if(!profilePrompt())return;
-    overlay('<h2>PROFILE</h2><div class="isx-grid"><div class="isx-card"><div class="isx-muted">NICKNAME</div><div class="isx-big" style="font-size:20px">'+esc(profile.nickname)+'</div></div><div class="isx-card"><div class="isx-muted">FRIEND CODE</div><div class="isx-code" style="font-size:14px;word-break:break-all">'+esc(profileCode(profile.nickname))+'</div></div></div><p>Send this code to a real-life friend. Their Friend screen will fill your nickname automatically.</p><div class="isx-row"><button class="ghost" id="isx-profile-close">CLOSE</button></div>');
+    var isAdmin=String(profile.nickname||'').trim().toUpperCase()==='HARDIK' && String(profileCode(profile.nickname)||'').toUpperCase()==='ISX-SEFSRE1L-OP8';
+    overlay('<h2>PROFILE</h2><div class="isx-grid">'+
+      '<div class="isx-card"><div class="isx-muted">NICKNAME</div><div class="isx-big" style="font-size:20px">'+esc(profile.nickname)+'</div></div>'+
+      '<div class="isx-card"><div class="isx-muted">COINS</div><div class="isx-big">'+Math.floor(data.coins)+'</div></div>'+
+      '<div class="isx-card"><div class="isx-muted">FRIEND CODE</div><div class="isx-code" style="font-size:14px;word-break:break-all">'+esc(profileCode(profile.nickname))+'</div></div>'+
+      '<div class="isx-card"><div class="isx-muted">ACCOUNT</div><div class="isx-big" style="font-size:18px">'+(isAdmin?'ADMIN':'PLAYER')+'</div></div>'+
+      '</div><div class="isx-row"><button class="action" id="isx-redeem-open">REDEEM CODES</button></div>'+
+      (isAdmin?'<div class="isx-card" style="margin-top:12px"><b>ADMIN PANEL</b><p>Admin access: HARDIK</p><div class="isx-row"><button class="action" id="isx-admin-open">OPEN ADMIN</button></div></div>':'')+
+      '<div class="isx-row"><button class="ghost" id="isx-profile-close">CLOSE</button></div>');
     document.getElementById('isx-profile-close').onclick=closeOverlay;
+    document.getElementById('isx-redeem-open').onclick=redeemView;
+    if(isAdmin){document.getElementById('isx-admin-open').onclick=adminView;}
+  }
+
+  function adminView(){
+    if(String(profile.nickname||'').trim().toUpperCase()!=='HARDIK')return;
+    overlay('<h2>ADMIN PANEL</h2><div class="isx-card"><div class="isx-muted">ADMIN ACCOUNT</div><div class="isx-big" style="font-size:20px">HARDIK</div><div class="isx-code">ISX-SEFSRE1L-OP8</div></div>'+      '<div class="isx-card"><b>COIN CONTROL</b><div class="isx-row"><input class="isx-input" id="isx-admin-coins" type="number" min="0" value="1000" placeholder="Coins"><button class="action" id="isx-admin-add">ADD COINS</button></div></div>'+      '<div class="isx-card"><b>SKIN CONTROL</b><div class="isx-row"><button class="action" id="isx-admin-unlock">UNLOCK ALL SKINS</button><button class="ghost" id="isx-admin-equip">EQUIP ALL-SKIN RANDOM</button></div></div>'+      '<div class="isx-row"><button class="ghost" id="isx-admin-close">CLOSE</button></div>');
+    document.getElementById('isx-admin-close').onclick=closeOverlay;
+    document.getElementById('isx-admin-add').onclick=function(){var n=Math.max(0,Math.floor(Number(document.getElementById('isx-admin-coins').value)||0));data.coins+=n;save();updateIdentityUI();showCoinToast('+'+n+' COINS • ADMIN');};
+    document.getElementById('isx-admin-unlock').onclick=function(){SKINS.forEach(function(x){if(data.skins.owned.indexOf(x.id)<0)data.skins.owned.push(x.id)});save();showCoinToast('ALL SKINS UNLOCKED');};
+    document.getElementById('isx-admin-equip').onclick=function(){if(!data.skins.owned.length)return;var i=Math.floor(Math.random()*data.skins.owned.length);var sid=data.skins.owned[i];if(window.__ISX_FORCE_SKIN){window.__ISX_FORCE_SKIN(sid);}else{data.skins.selected=sid;save();applySkin();}showCoinToast('EQUIPPED • '+sid);};
   }
 
   var SKINS=[
-    {id:'default',name:'NOVA',price:0,primary:0x35e7ff,accent:0xffce4a},
-    {id:'plasma',name:'PLASMA',price:100,primary:0xff4fd8,accent:0xff8ad8},
-    {id:'solar',name:'SOLAR',price:150,primary:0xffa23b,accent:0xffe85b},
-    {id:'toxic',name:'TOXIC',price:200,primary:0x7dff55,accent:0xd7ff62},
-    {id:'ghost',name:'GHOST',price:250,primary:0xddeaff,accent:0x9cc8ff},
-    {id:'void',name:'VOID',price:350,primary:0xa66bff,accent:0xff54e8}
+    {id:'default',name:'AURORA DART',price:0,primary:0x35e7ff,accent:0xffce4a,shape:'dart'},
+    {id:'plasma',name:'NEON WRAITH',price:100,primary:0xff4fd8,accent:0xff8ad8,shape:'wraith'},
+    {id:'solar',name:'SOLAR SPEAR',price:150,primary:0xffa23b,accent:0xffe85b,shape:'spear'},
+    {id:'toxic',name:'TOXIC MANTA',price:200,primary:0x7dff55,accent:0xd7ff62,shape:'manta'},
+    {id:'ghost',name:'PHANTOM ARC',price:250,primary:0xddeaff,accent:0x9cc8ff,shape:'arc'},
+    {id:'void',name:'VOID CROWN',price:350,primary:0xa66bff,accent:0xff54e8,shape:'crown'},
+    {id:'ember',name:'EMBER TALON',price:450,primary:0xff6438,accent:0xffc05a,shape:'talon'},
+    {id:'crystal',name:'CRYSTAL NOVA',price:600,primary:0x74e8ff,accent:0xffffff,shape:'crystal'}
   ];
+  function skinGeometry(shape, glow){
+    var g;
+    switch(shape){
+      case 'wraith': g=new THREE.TetrahedronGeometry(glow?.86:.68,0); break;
+      case 'spear': g=new THREE.ConeGeometry(glow?.72:.58,glow?1.95:1.55,4); break;
+      case 'manta': g=new THREE.OctahedronGeometry(glow?.88:.68,0); g.scale(1.65,.42,.95); return g;
+      case 'arc': g=new THREE.TorusGeometry(glow?.62:.48,glow?.18:.13,8,16,Math.PI*1.55); g.rotateY(Math.PI/2); return g;
+      case 'crown': g=new THREE.CylinderGeometry(glow?.62:.48,glow?.88:.68,glow?.82:.62,6,1); break;
+      case 'talon': g=new THREE.ConeGeometry(glow?.82:.64,glow?1.7:1.3,3); break;
+      case 'crystal': g=new THREE.DodecahedronGeometry(glow?.82:.64,0); break;
+      default: g=new THREE.OctahedronGeometry(glow?.68:.55,0); break;
+    }
+    g.scale(1,.55,1.8);
+    return g;
+  }
   function applySkin(){
     var s=SKINS.find(function(x){return x.id===data.skins.selected})||SKINS[0];
-    try{shipMat.color.setHex(s.primary);shipGlowMat.color.setHex(s.primary);guideRingMat.color.setHex(s.primary);ghostMeshes.forEach(function(g){g.material.color.setHex(s.primary)})}catch(e){}
+    var primary=s.primary;
+    var ok=false;
+    try{
+      if(typeof window.__ISX_RENDER_SKIN==='function') ok=window.__ISX_RENDER_SKIN(s.shape,primary);
+    }catch(e){console.error('Impossible Start skin apply failed:',e);}
+    if(!ok) console.error('Impossible Start: skin renderer bridge unavailable');
     updateIdentityUI();
   }
+  window.__ISX_APPLY_SKIN=applySkin;
+  window.__ISX_GET_SKIN=function(){return data.skins.selected;};
+  window.__ISX_GET_SKIN_PRIMARY=function(){var s=SKINS.find(function(x){return x.id===data.skins.selected})||SKINS[0];return s.primary;};
+  window.__ISX_GET_SKIN_SHAPE=function(){var s=SKINS.find(function(x){return x.id===data.skins.selected})||SKINS[0];return s.shape;};
+  window.__ISX_GET_SKIN_STATE=function(){return {selected:data.skins.selected,shape:(SKINS.find(function(x){return x.id===data.skins.selected})||SKINS[0]).shape};};
+  window.__ISX_FORCE_SKIN=function(id){
+    var s=SKINS.find(function(x){return x.id===id});
+    if(!s)return false;
+    data.skins.selected=id;save();
+    return typeof window.__ISX_RENDER_SKIN==='function' ? window.__ISX_RENDER_SKIN(s.shape,s.primary) : false;
+  };
+
+  // Apply saved skin immediately and again after the first render tick.
+  setTimeout(function(){applySkin();},0);
+
   function shopView(){
-    var html='<h2>SKIN LAB</h2><div class="isx-note">COINS: <b>'+data.coins+'</b> • Earn 1 coin per Resonance shard and 50 coins for a duel win.</div><div class="isx-grid">';
-    SKINS.forEach(function(s){var owned=data.skins.owned.indexOf(s.id)>=0;var selected=data.skins.selected===s.id;html+='<div class="isx-card"><div style="font-size:16px;color:#f5f9ff;text-shadow:0 0 8px #35e7ff">'+s.name+'</div><div class="isx-muted">'+(s.price?'PRICE: '+s.price+' COINS':'FREE')+'</div><div class="isx-row"><button class="'+(selected?'action':'ghost')+'" data-skin="'+s.id+'">'+(selected?'EQUIPPED':(owned?'EQUIP':'BUY'))+'</button></div></div>'});
+    var html='<h2>SKIN LAB</h2><div class="isx-note">Skins now change the ship shape as well as its appearance.</div><div class="isx-grid">';
+    SKINS.forEach(function(s){
+      var owned=data.skins.owned.indexOf(s.id)>=0,selected=data.skins.selected===s.id;
+      html+='<div class="isx-card"><div style="font-size:16px;color:#f5f9ff">'+s.name+'</div><div class="isx-muted">SHAPE: '+String(s.shape).toUpperCase()+' • '+(s.price?'PRICE: '+s.price+' COINS':'FREE')+'</div><div class="isx-row"><button class="'+(selected?'action':'ghost')+'" data-skin="'+s.id+'">'+(selected?'EQUIPPED':(owned?'EQUIP':'BUY'))+'</button></div></div>';
+    });
     html+='</div><div class="isx-row"><button class="ghost" id="isx-shop-close">CLOSE</button></div>';overlay(html);
-    document.querySelectorAll('[data-skin]').forEach(function(b){b.onclick=function(){var id=b.dataset.skin,s=SKINS.find(function(x){return x.id===id});if(!s)return;if(data.skins.owned.indexOf(id)<0){if(data.coins<s.price)return showCoinToast('NOT ENOUGH COINS');data.coins-=s.price;data.skins.owned.push(id);showCoinToast('SKIN UNLOCKED • '+s.name)}data.skins.selected=id;save();applySkin();shopView()}});
+    document.querySelectorAll('[data-skin]').forEach(function(b){b.onclick=function(){
+      var id=b.dataset.skin,s=SKINS.find(function(x){return x.id===id});if(!s)return;
+      if(data.skins.owned.indexOf(id)<0){if(data.coins<s.price)return showCoinToast('NOT ENOUGH COINS');data.coins-=s.price;data.skins.owned.push(id);showCoinToast('SKIN UNLOCKED • '+s.name)}
+      if(window.__ISX_FORCE_SKIN){window.__ISX_FORCE_SKIN(id);}else{data.skins.selected=id;save();applySkin();}shopView();setTimeout(function(){applySkin();},0);
+    }});
     document.getElementById('isx-shop-close').onclick=closeOverlay;
+  }
+
+  function redeemView(){
+    var codes={
+      STARTER:25,FREE2026COINS:50,BLUESTART:30,IMPOSSIBLE25:25,
+      NEONBOOST:40,VOIDGIFT:60,DUELCHAMP:75,SHARDHUNTER:35
+    };
+    data.redeemedCodes=Array.isArray(data.redeemedCodes)?data.redeemedCodes:[];
+    var rows=Object.keys(codes).map(function(c){return '<div class="isx-friend"><span><b>'+c+'</b><br><span class="isx-muted">REWARD</span></span><b>+'+codes[c]+' COINS</b></div>'}).join('');
+    overlay('<h2>REDEEM CODES</h2><input class="isx-input" id="isx-redeem-code" maxlength="32" placeholder="ENTER CODE"><div class="isx-row"><button class="action" id="isx-redeem-btn">REDEEM</button></div><div id="isx-redeem-status" class="isx-note"></div><div class="isx-card" style="margin-top:12px">'+rows+'</div><div class="isx-row"><button class="ghost" id="isx-redeem-close">CLOSE</button></div>');
+    document.getElementById('isx-redeem-close').onclick=closeOverlay;
+    document.getElementById('isx-redeem-btn').onclick=function(){
+      var code=(document.getElementById('isx-redeem-code').value||'').trim().toUpperCase(),st=document.getElementById('isx-redeem-status');
+      if(!Object.prototype.hasOwnProperty.call(codes,code)){st.textContent='INVALID CODE';return}
+      if(data.redeemedCodes.indexOf(code)>=0){st.textContent='CODE ALREADY REDEEMED';return}
+      data.redeemedCodes.push(code);data.coins+=codes[code];save();updateIdentityUI();showCoinToast('CODE REDEEMED • +'+codes[code]+' COINS');st.textContent='SUCCESS • +'+codes[code]+' COINS';
+    };
   }
 
   function achievementsView(){
@@ -1940,25 +2202,79 @@ button{touch-action:manipulation}
   if(over)new MutationObserver(function(){var v=!over.classList.contains('hidden');if(v&&!lastOver)finalize();lastOver=v}).observe(over,{attributes:true,attributeFilter:['class']});
 
   /* Replace the old local-duel UI with create/join by code. */
+  var duelRounds={deaths:0,opponentDeaths:0,started:false,split:false,seed:null,opponent:'OPPONENT',code:null};
+  function duelCountdown(done){
+    var x=document.createElement('div');x.id='isx-duel-countdown';
+    x.innerHTML='<div class="duel-count-number">3</div><div class="duel-count-label">GET READY</div>';
+    document.body.appendChild(x);
+    var n=3;
+    var timer=setInterval(function(){
+      n--;
+      if(n>0){x.querySelector('.duel-count-number').textContent=n}
+      else{x.querySelector('.duel-count-number').textContent='GO!';clearInterval(timer);setTimeout(function(){x.remove();done()},450)}
+    },700);
+  }
+  function askSplitScreen(done){
+    var ok=confirm('DUEL READY\n\nEnable split-screen for both players?\n\nThis duel will show YOU and OPPONENT side-by-side (or top/bottom on portrait).');
+    duelRounds.split=ok;
+    done();
+  }
   function startDuel(seed,opponent){
-    duel.active=true;
-    run.active=true;run.mode='duel';run.coinsStart=data.coins;duel.seed=seed;duel.opponent=opponent||'OPPONENT';duel.opponentScore=0;duel.aiT=0;
+    duelRounds={deaths:0,opponentDeaths:0,started:false,split:false,seed:seed,opponent:opponent||'OPPONENT',code:duel.code||null,startAt:0};
+    duel.active=true;run.active=true;run.mode='duel';run.coinsStart=data.coins;duel.seed=seed;duel.opponent=opponent||'OPPONENT';duel.opponentScore=0;duel.aiT=0;
     window.__ISX_SET_SEED(seed);
-    if(typeof window.__ISX_DUEL_MODE==='undefined')window.__ISX_DUEL_MODE=true;else window.__ISX_DUEL_MODE=true;
+    window.__ISX_DUEL_MODE=true;
+    window.__ISX_DUEL_SPLIT=false;
     document.body.classList.add('mobile-playing');
     try{initAudio();}catch(e){}
     resetGame();state='playing';showScreen(null);document.getElementById('hud').classList.add('show');document.getElementById('pause-btn').classList.add('show');
     enableDuelView();
+    askSplitScreen(function(){
+      window.__ISX_DUEL_SPLIT=duelRounds.split;
+      duelCountdown(function(){duelRounds.started=true;duelRounds.startAt=performance.now()});
+    });
   }
+  window.__ISX_DUEL_ON_DEATH=function(){
+    if(!duel.active||!duelRounds.started)return false;
+    duelRounds.deaths++;
+    if(duelRounds.deaths>=3)return false;
+    setTimeout(function(){resetGame();state='playing';document.getElementById('hud').classList.add('show');document.getElementById('pause-btn').classList.add('show')},80);
+    return true;
+  };
+  window.__ISX_DUEL_FINISH=function(){
+    if(!duel.active||!duelRounds.started)return false;
+    if(duelRounds.deaths<3)return true;
+    duel.active=false;window.__ISX_DUEL_MODE=false;window.__ISX_DUEL_SPLIT=false;run.active=false;
+    var win=duelRounds.opponentDeaths>=3;
+    if(win){
+      data.coins+=50;data.stats.duelWins=(Number(data.stats.duelWins)||0)+1;
+      data.achievements.DUELIST=true;showCoinToast('+50 COINS • DUEL WIN');
+    }
+    save();updateIdentityUI();
+    setTimeout(function(){duelResult(win)},150);
+    return true;
+  };
   function duelView(){
-    overlay('<h2>DUELS</h2><p>Create a duel code and share it with your real-life friend, or enter their code. No nicknames are requested.</p><div class="isx-card"><b>CREATE DUEL</b><p>Your account nickname is used automatically.</p><div class="isx-row"><button class="action" id="isx-duel-create">CREATE CODE</button></div></div><div class="isx-card" style="margin-top:10px"><b>JOIN DUEL</b><input class="isx-input" id="isx-duel-join" maxlength="120" placeholder="ISD-DUEL-CODE" style="margin-top:8px"><div class="isx-row"><button class="action" id="isx-duel-join-btn">JOIN CODE</button></div></div><div id="isx-duel-status" class="isx-note"></div><div class="isx-row"><button class="ghost" id="isx-duel-close">CLOSE</button></div>');
+    overlay('<h2>DUELS</h2><p>Enter a duel code to start immediately. There is no START button. Each player gets 3 deaths; the first to reach 3 loses.</p><div class="isx-card"><b>CREATE DUEL</b><div class="isx-row"><button class="action" id="isx-duel-create">CREATE CODE</button></div><div id="isx-duel-created" class="isx-note"></div></div><div class="isx-card" style="margin-top:10px"><b>ENTER CODE</b><input class="isx-input" id="isx-duel-join" maxlength="120" placeholder="ISD-DUEL-CODE" style="margin-top:8px"><div class="isx-note">Entering a valid code starts the duel automatically.</div></div><div id="isx-duel-status" class="isx-note"></div><div class="isx-row"><button class="ghost" id="isx-duel-close">CLOSE</button></div>');
     document.getElementById('isx-duel-close').onclick=closeOverlay;
-    document.getElementById('isx-duel-create').onclick=function(){if(!profilePrompt())return;var seed='DUEL-'+Date.now().toString(36).toUpperCase()+'-'+hash(profile.nickname+'|'+Date.now()).slice(0,6);duel.code=duelCode(profile.nickname,seed);document.getElementById('isx-duel-status').innerHTML='<b>DUEL CODE</b><div class="isx-code" style="font-size:13px;word-break:break-all">'+esc(duel.code)+'</div><p>Share this code. Press START when your friend is ready.</p><button class="action" id="isx-duel-start">START DUEL</button>';document.getElementById('isx-duel-start').onclick=function(){closeOverlay();startDuel(seed,'OPPONENT')}};
-    document.getElementById('isx-duel-join-btn').onclick=function(){var d=decodeDuelCode(document.getElementById('isx-duel-join').value);if(!d){document.getElementById('isx-duel-status').textContent='Invalid duel code.';return}closeOverlay();startDuel(d.seed,d.nickname)};
+    document.getElementById('isx-duel-create').onclick=function(){
+      if(!profilePrompt())return;
+      var seed='DUEL-'+Date.now().toString(36).toUpperCase()+'-'+hash(profile.nickname+'|'+Date.now()).slice(0,6);
+      duel.code=duelCode(profile.nickname,seed);
+      document.getElementById('isx-duel-created').innerHTML='<b>YOUR CODE</b><div class="isx-code" style="font-size:13px;word-break:break-all">'+esc(duel.code)+'</div><p>Share this code. Your friend only needs to enter it.</p>';
+    };
+    var join=document.getElementById('isx-duel-join');
+    join.oninput=function(){
+      var d=decodeDuelCode(join.value);
+      var st=document.getElementById('isx-duel-status');
+      if(!d){st.textContent='';return}
+      st.textContent='DUEL FOUND • '+d.nickname+' • STARTING...';
+      closeOverlay();setTimeout(function(){startDuel(d.seed,d.nickname)},120);
+    };
   }
-  function duelResult(){
-    var sc=Math.floor(Number(document.getElementById('final-score').textContent)||0),opp=Math.floor(Number(duel.opponentScore)||0);var win=sc>opp,draw=sc===opp;
-    overlay('<h2>DUEL '+(draw?'DRAW':(win?'VICTORY':'DEFEAT'))+'</h2><div class="isx-grid"><div class="isx-card"><div class="isx-muted">'+esc(profile.nickname||'YOU')+'</div><div class="isx-big">'+sc+'</div></div><div class="isx-card"><div class="isx-muted">'+esc(duel.opponent)+'</div><div class="isx-big">'+opp+'</div></div></div><p>'+(win?'WINNER • +50 COINS':draw?'DRAW':'OPPONENT WINS')+'</p><div class="isx-row"><button class="action" id="isx-duel-done">DONE</button></div>');document.getElementById('isx-duel-done').onclick=function(){closeOverlay();window.__ISX_DUEL_MODE=false;document.getElementById('screen-menu').classList.remove('hidden')};
+  function duelResult(win){
+    overlay('<h2>DUEL '+(win?'VICTORY':'DEFEAT')+'</h2><div class="isx-grid"><div class="isx-card"><div class="isx-muted">'+esc(profile.nickname||'YOU')+'</div><div class="isx-big">'+duelRounds.deaths+'/3 DEATHS</div></div><div class="isx-card"><div class="isx-muted">'+esc(duelRounds.opponent||'OPPONENT')+'</div><div class="isx-big">'+duelRounds.opponentDeaths+'/3 DEATHS</div></div></div><p>'+(win?'WINNER • +50 COINS':'OPPONENT WINS')+'</p><div class="isx-row"><button class="action" id="isx-duel-done">DONE</button></div>');
+    document.getElementById('isx-duel-done').onclick=function(){closeOverlay();window.__ISX_DUEL_MODE=false;document.getElementById('screen-menu').classList.remove('hidden')};
   }
 
   window.__ISX_LOCAL_VIEWS={friends:friendsView,duels:duelView,skins:shopView,profile:profileView,achievements:achievementsView};
@@ -1978,10 +2294,11 @@ button{touch-action:manipulation}
   }
   function disableDuelView(){if(duelLabel)duelLabel.style.display='none';if(duelOpponentShip)duelOpponentShip.visible=false}
   window.__ISX_DUEL_RENDER=function(){
-    if(!duel.active||!window.__ISX_DUEL_MODE||!duelCamera){renderer.render(scene,camera);return}
+    if(!duel.active||!window.__ISX_DUEL_MODE||!duelCamera||window.__ISX_DUEL_SPLIT===false){renderer.render(scene,camera);return}
     duelOpponentShip.visible=true;
     /* deterministic, non-controllable opponent POV so the second half is never black */
     duel.aiT+=0.018;
+    if(duelRounds.started&&duelRounds.startAt){duelRounds.opponentDeaths=Math.min(3,Math.floor((performance.now()-duelRounds.startAt)/15000));}
     var ox=Math.sin(duel.aiT*.91+hash(String(duel.seed)).length)*2.1,oy=Math.cos(duel.aiT*1.17)*1.7;
     duel.opponentX=ox;duel.opponentY=oy;duel.opponentScore=Math.floor((distance*8)+(Math.max(0,Math.sin(duel.aiT))*18));
     duelOpponentShip.position.set(ox,oy,PLAYER_Z);duelOpponentShip.rotation.set(oy*.06,0,-ox*.08);
@@ -2047,6 +2364,7 @@ button{touch-action:manipulation}
 #isx-duel-label span:last-child{color:#b34bff;text-shadow:0 0 10px #b34bff}
 #isx-overlay{z-index:10000}
 @media(max-width:600px){#isx-coin-hud{top:54px;font-size:10px;padding:6px 10px}.isx-coin-toast{top:42px}}
+#isx-coin-hud,#coin-display-fixed,.isx-coin-toast{display:none!important}
 </style>
 <script id="isx-achievement-notifications">
 (function(){
@@ -2513,17 +2831,23 @@ button{touch-action:manipulation}
     try{var r=localStorage.getItem(k);return r?JSON.parse(r):null}catch(e){return null}
   }
   function readStats(){
-    var d=parseKey('impossible-start:upgrade:v3')||{};
+    /* The active save is v4. The old v3-only reader could show 0/stale coins. */
+    var d=parseKey('impossible-start:upgrade:v4')||{};
+    var old=parseKey('impossible-start:upgrade:v3')||{};
     var c=parseKey('impossible-start:data:v2')||{};
+    var master=parseKey('impossible-start:master:v1')||{};
+    var md=master.data||{};
     var s=d.stats||{};
+    var os=old.stats||{};
     var cs=c.stats||{};
+    var ms=md.stats||{};
     return {
-      best:Math.max(num(s.best),num(cs.best)),
-      runs:Math.max(num(s.totalRuns),num(cs.gamesPlayed)),
-      distance:Math.max(num(s.bestDistance),num(cs.totalDistance)),
-      shards:Math.max(num(s.obstaclesDodged),num(cs.resonanceCollected)),
-      score:num(s.totalScore)||num(cs.totalScore),
-      coins:num(d.coins)||num((d.stats||{}).coins)||num((c.stats||{}).coins)
+      best:Math.max(num(s.best),num(os.best),num(ms.best),num(cs.best)),
+      runs:Math.max(num(s.totalRuns),num(os.totalRuns),num(ms.totalRuns),num(cs.gamesPlayed)),
+      distance:Math.max(num(s.bestDistance),num(os.bestDistance),num(ms.bestDistance),num(cs.totalDistance)),
+      shards:Math.max(num(s.obstaclesDodged),num(os.obstaclesDodged),num(ms.obstaclesDodged),num(cs.resonanceCollected)),
+      score:Math.max(num(s.totalScore),num(os.totalScore),num(ms.totalScore),num(cs.totalScore)),
+      coins:Math.max(num(d.coins),num(md.coins),num(old.coins),num((d.stats||{}).coins),num((md.stats||{}).coins),num((c.stats||{}).coins))
     };
   }
   function ensureScreen(){
@@ -2570,6 +2894,26 @@ button{touch-action:manipulation}
 })();
 </script>
 
+<style id="isx-v6-feature-css">
+#isx-duel-countdown{position:fixed;inset:0;z-index:20000;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(2,5,14,.72);backdrop-filter:blur(4px);pointer-events:none}
+.duel-count-number{font-size:min(18vw,120px);font-weight:900;color:#35e7ff;text-shadow:0 0 30px #35e7ff,0 0 70px rgba(53,231,255,.4)}
+.duel-count-label{margin-top:-8px;font-size:12px;letter-spacing:5px;color:#fff}
+.friend-actions{display:flex;flex-wrap:wrap;justify-content:flex-end}
+.isx-input{color:#f5f9ff!important}
+#isx-overlay select.isx-input{background:#050812}
+@media(max-width:600px){.friend-actions button{padding:7px 8px;font-size:8px}.duel-count-label{font-size:10px}}
+</style>
+<script id="isx-v6-init">
+(function(){
+  function sync(){
+    try{
+      var b=document.querySelector('#seg-touchMode button.active');
+      if(b && window.setMobileControlMode)window.setMobileControlMode(b.dataset.value);
+    }catch(e){}
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',sync);else setTimeout(sync,100);
+})();
+</script>
 </body>
 </html>
 
