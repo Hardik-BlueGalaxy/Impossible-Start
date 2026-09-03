@@ -1726,6 +1726,7 @@ button{touch-action:manipulation}
 @media(max-width:600px){.isx-box{padding:20px}.isx-grid{grid-template-columns:1fr}.isx-code{font-size:18px}}
 .isx-box b,.isx-card b,.isx-friend b{color:#f4f8ff!important}
 </style>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <div id="isx-overlay"><div class="isx-box" id="isx-overlay-box"></div></div>
 <script>
 (function(){
@@ -1951,6 +1952,7 @@ button{touch-action:manipulation}
     if(!profile.friendCode||!/^[A-Z0-9]{9}$/.test(profile.friendCode))profile.friendCode=randomCode9();
     rememberCode(profile.friendCode,n);
     save();updateIdentityUI();
+    if(window.__ISX_P2P_INIT)setTimeout(window.__ISX_P2P_INIT,50);
     if(st)st.innerHTML='ACCOUNT CREATED • YOUR FRIEND CODE:<br><b style="color:var(--cyan);font-size:18px;letter-spacing:2px">'+esc(profile.friendCode)+'</b>';
     setTimeout(function(){document.getElementById('nickname-screen').classList.add('hidden');document.getElementById('screen-menu').classList.remove('hidden');},900);
   }
@@ -2414,6 +2416,228 @@ button{touch-action:manipulation}
 
   /* Skin application after core theme/settings have initialized. */
   setTimeout(function(){applySkin();updateIdentityUI();if(!profile.nickname)profilePrompt()},60);
+
+  /* ================================================================
+     P2P SOCIAL NETWORK — still a single index.html.
+     PeerJS supplies signaling; no custom backend file is required.
+     Friend codes and duel codes are exactly 9 characters.
+     ================================================================ */
+  (function(){
+    var NET_KEY='impossible-start:p2p:v1';
+    var peer=null, peerReady=false, netStatus='OFFLINE';
+    var conns={};
+    var duelRooms={};
+    var P2P_ALPH='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    function netJson(k,d){try{var x=localStorage.getItem(k);return x?JSON.parse(x):d}catch(e){return d}}
+    function netSet(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
+    function code9(){var out='';try{var a=new Uint32Array(9);if(crypto&&crypto.getRandomValues)crypto.getRandomValues(a);for(var i=0;i<9;i++)out+=P2P_ALPH[a[i]%P2P_ALPH.length]}catch(e){for(var j=0;j<9;j++)out+=P2P_ALPH[Math.floor(Math.random()*P2P_ALPH.length)]}return out}
+    function myCode(){
+      if(!profile.friendCode||!/^[A-Z0-9]{9}$/.test(profile.friendCode)){profile.friendCode=code9();save()}
+      return profile.friendCode.toUpperCase();
+    }
+    function socialState(){
+      data.social=data.social||{pending:[],requests:[],outgoing:[],messages:{},gifts:[]};
+      ['pending','requests','outgoing','gifts'].forEach(function(k){if(!Array.isArray(data.social[k]))data.social[k]=[]});
+      if(!data.social.messages||typeof data.social.messages!=='object')data.social.messages={};
+      return data.social;
+    }
+    function uiCoins(){
+      var e=document.getElementById('isx-coins');if(e)e.textContent=String(data.coins||0);
+      try{if(typeof updateIdentityUI==='function')updateIdentityUI()}catch(e){}
+    }
+    function saveNet(){try{save()}catch(e){try{localStorage.setItem('impossible-start:upgrade:v4',JSON.stringify(data));localStorage.setItem('impossible-start:profile:v4',JSON.stringify(profile));localStorage.setItem('impossible-start:friends:v4',JSON.stringify(friends))}catch(x){}}}
+    function isFriend(code){return friends.some(function(f){return String(f.code||f.friendCode||'').toUpperCase()===String(code||'').toUpperCase()})}
+    function addFriend(code,nick){
+      if(!code||code===myCode())return false;
+      if(!isFriend(code)){friends.push({code:code,nickname:nick||'PLAYER'});saveNet()}
+      var ss=socialState();
+      ss.outgoing=ss.outgoing.filter(function(r){return String(r.code).toUpperCase()!==String(code).toUpperCase()});
+      ss.requests=ss.requests.filter(function(r){return String(r.code).toUpperCase()!==String(code).toUpperCase()});
+      saveNet();return true;
+    }
+    function connFor(code){return conns[String(code).toUpperCase()]||null}
+    function send(code,msg){
+      var c=connFor(code);
+      if(c&&c.open){try{c.send(msg);return true}catch(e){}}
+      if(!peerReady)return false;
+      try{
+        c=peer.connect(String(code).toUpperCase(),{reliable:true});
+        conns[String(code).toUpperCase()]=c;
+        bindConn(c,String(code).toUpperCase());
+        c.on('open',function(){try{c.send(msg)}catch(e){}});
+        return true;
+      }catch(e){return false}
+    }
+    function bindConn(c,remoteCode){
+      c.on('open',function(){
+        conns[remoteCode]=c;
+        try{c.send({t:'hello',code:myCode(),nickname:profile.nickname||'PLAYER'})}catch(e){}
+      });
+      c.on('data',function(m){handleMsg(remoteCode,m||{})});
+      c.on('close',function(){if(conns[remoteCode]===c)delete conns[remoteCode]});
+      c.on('error',function(){});
+    }
+    function handleMsg(remoteCode,m){
+      var ss=socialState(),t=m.t;
+      if(t==='hello'){
+        if(m.code && m.code!==myCode() && isFriend(m.code)){
+          friends.forEach(function(f){if(f.code===m.code&&m.nickname)f.nickname=m.nickname});saveNet();
+        }
+        return;
+      }
+      if(t==='friend_request'){
+        if(!m.code||m.code===myCode()||isFriend(m.code))return;
+        if(!ss.requests.some(function(r){return r.code===m.code}))ss.requests.push({code:m.code,nickname:m.nickname||'PLAYER',at:Date.now()});
+        saveNet();return;
+      }
+      if(t==='friend_response'){
+        if(m.accepted)addFriend(m.code||remoteCode,m.nickname||'PLAYER');
+        else ss.outgoing=ss.outgoing.filter(function(r){return String(r.code).toUpperCase()!==String(m.code||remoteCode).toUpperCase()});
+        saveNet();return;
+      }
+      if(t==='chat'){
+        if(!isFriend(remoteCode))return;
+        var key=remoteCode;if(!ss.messages[key])ss.messages[key]=[];
+        ss.messages[key].push({from:m.nickname||remoteCode,text:String(m.text||'').slice(0,300),at:Date.now()});saveNet();return;
+      }
+      if(t==='gift_coins'){
+        if(!isFriend(remoteCode))return;
+        var amt=Math.max(0,Math.floor(Number(m.amount)||0));if(!amt)return;
+        data.coins=(Number(data.coins)||0)+amt;ss.gifts.push({nickname:m.nickname||remoteCode,type:'coins',amount:amt,status:'received',at:Date.now()});saveNet();uiCoins();showCoinToast('+'+amt+' COINS • GIFT RECEIVED');return;
+      }
+      if(t==='gift_skin'){
+        if(!isFriend(remoteCode))return;
+        var sid=String(m.skin||'');if(!sid)return;
+        data.skins=data.skins||{owned:['default'],selected:'default'};data.skins.owned=Array.isArray(data.skins.owned)?data.skins.owned:['default'];
+        if(data.skins.owned.indexOf(sid)<0)data.skins.owned.push(sid);
+        ss.gifts.push({nickname:m.nickname||remoteCode,type:'skin',skin:sid,status:'received',at:Date.now()});saveNet();showCoinToast('SKIN RECEIVED • '+sid.toUpperCase());return;
+      }
+      if(t==='duel_request'){
+        var hostCode=String(m.code||'').toUpperCase();
+        var room=duelRooms[hostCode];
+        if(room&&room.host===myCode()){
+          try{send(remoteCode,{t:'duel_invite',code:hostCode,seed:room.seed,nickname:profile.nickname})}catch(e){}
+          closeOverlay();
+          setTimeout(function(){startDuel(room.seed,m.nickname||remoteCode)},120);
+        }
+        return;
+      }
+      if(t==='duel_invite'){
+        var code=String(m.code||'').toUpperCase();if(!/^[A-Z0-9]{9}$/.test(code))return;
+        duelRooms[code]={host:remoteCode,seed:String(m.seed||''),nickname:m.nickname||remoteCode};netSet(NET_KEY,{duelRooms:duelRooms});
+        startNetworkDuel(code,duelRooms[code]);
+        return;
+      }
+      if(t==='duel_ready'){
+        var room=duelRooms[String(m.code||'').toUpperCase()];if(room){room.joined=true;room.peer=remoteCode;netSet(NET_KEY,{duelRooms:duelRooms})}
+        return;
+      }
+    }
+    function initPeer(){
+      if(peer||!profile.nickname||!window.Peer)return;
+      var id=myCode();
+      try{
+        peer=new Peer(id,{debug:0});
+        peer.on('open',function(openId){peerReady=true;netStatus='ONLINE';profile.friendCode=String(openId).toUpperCase();saveNet();updateIdentityUI();friends.forEach(function(f){send(f.code,{t:'hello',code:myCode(),nickname:profile.nickname})})});
+        peer.on('connection',function(c){var rc=String(c.peer||'').toUpperCase();conns[rc]=c;bindConn(c,rc)});
+        peer.on('error',function(e){
+          peerReady=false;netStatus=(e&&e.type==='unavailable-id')?'CODE BUSY':'NETWORK ERROR';
+          if(e&&e.type==='unavailable-id'){
+            /* A collision is exceptionally unlikely, but regenerate safely. */
+            try{peer.destroy()}catch(x){}
+            profile.friendCode=code9();saveNet();setTimeout(initPeer,300);
+          }
+        });
+        peer.on('disconnected',function(){peerReady=false;netStatus='RECONNECTING';try{peer.reconnect()}catch(e){}});
+      }catch(e){netStatus='NETWORK UNAVAILABLE'}
+    }
+    function netEsc(v){return esc(v)}
+    function netFriendsView(){
+      if(!profile.nickname){profilePrompt();return}
+      var ss=socialState(),mode='friends';
+      function render(){
+        var body='';
+        if(mode==='friends'){
+          body='<div class="isx-card"><b>YOUR FRIEND CODE</b><div class="isx-code">'+netEsc(myCode())+'</div><p>Share this exact 9-character code. P2P status: <b>'+netEsc(netStatus)+'</b></p></div><div class="isx-card" style="margin-top:10px">'+(friends.length?friends.map(function(f,i){return '<div class="isx-friend"><span><b>'+netEsc(f.nickname)+'</b><br><span class="isx-muted">'+netEsc(f.code)+'</span></span><span class="friend-actions"><button class="ghost" data-nchat="'+i+'">CHAT</button><button class="ghost" data-ngift="'+i+'">GIFT</button><button class="ghost isx-danger" data-nrm="'+i+'">REMOVE</button></span></div>'}).join(''):'<div class="isx-note">No accepted friends yet.</div>')+'</div>';
+        }else if(mode==='pending'){
+          body='<div class="isx-card"><b>INCOMING REQUESTS</b>'+(ss.requests.length?ss.requests.map(function(r,i){return '<div class="isx-friend"><span><b>'+netEsc(r.nickname)+'</b><br><span class="isx-muted">'+netEsc(r.code)+'</span></span><span class="friend-actions"><button class="action" data-nacc="'+i+'">ACCEPT</button><button class="ghost isx-danger" data-ndec="'+i+'">DECLINE</button></span></div>'}).join(''):'<div class="isx-note">No incoming requests.</div>')+'</div><div class="isx-card" style="margin-top:10px"><b>OUTGOING REQUESTS</b>'+(ss.outgoing.length?ss.outgoing.map(function(r,i){return '<div class="isx-friend"><span><b>'+netEsc(r.nickname)+'</b><br><span class="isx-muted">'+netEsc(r.code)+'</span><br><span class="isx-muted">REQUEST SENT • WAITING FOR ACCEPTANCE</span></span><button class="ghost isx-danger" data-ncan="'+i+'">CANCEL</button></div>'}).join(''):'<div class="isx-note">No outgoing requests.</div>')+'</div>';
+        }else if(mode==='find'){
+          body='<div class="isx-card"><b>FIND PEOPLE</b><p>Enter another player’s 9-character Friend Code. The player must be online to receive the request.</p><input class="isx-input" id="np-code" maxlength="9" placeholder="9-CHAR FRIEND CODE"><input class="isx-input" id="np-name" readonly style="margin-top:8px" placeholder="ONLINE PLAYER"><div id="np-status" class="isx-note">Enter 9 characters, then press FIND.</div><div class="isx-row"><button class="action" id="np-find">FIND & SEND REQUEST</button></div></div>';
+        }else{
+          body='<div class="isx-card"><b>GIFTS</b><p>Gift coins or an owned skin to an accepted friend. Gifts are delivered instantly while both players are online.</p><div class="isx-note">Received gifts are stored locally in your gift history.</div></div>';
+        }
+        overlay('<h2>FRIENDS</h2><div class="isx-row">'+['friends','pending','find','gifts'].map(function(x){return '<button class="'+(mode===x?'action':'ghost')+'" id="nt-'+x+'">'+x.toUpperCase()+(x==='pending'&&ss.requests.length+ss.outgoing.length?' ('+(ss.requests.length+ss.outgoing.length)+')':'')+'</button>'}).join('')+'</div>'+body+'<div class="isx-row"><button class="ghost" id="n-close">CLOSE</button></div>');
+        document.getElementById('n-close').onclick=closeOverlay;
+        ['friends','pending','find','gifts'].forEach(function(x){document.getElementById('nt-'+x).onclick=function(){mode=x;render()}});
+        if(mode==='friends'){
+          document.querySelectorAll('[data-nchat]').forEach(function(b){b.onclick=function(){netChatView(friends[Number(b.dataset.nchat)])}});
+          document.querySelectorAll('[data-ngift]').forEach(function(b){b.onclick=function(){netGiftView(friends[Number(b.dataset.ngift)])}});
+          document.querySelectorAll('[data-nrm]').forEach(function(b){b.onclick=function(){var f=friends.splice(Number(b.dataset.nrm),1)[0];saveNet();if(f&&connFor(f.code))try{connFor(f.code).close()}catch(e){};render()}});
+        }else if(mode==='pending'){
+          document.querySelectorAll('[data-nacc]').forEach(function(b){b.onclick=function(){var r=ss.requests.splice(Number(b.dataset.nacc),1)[0];if(!r)return;addFriend(r.code,r.nickname);send(r.code,{t:'friend_response',accepted:true,code:myCode(),nickname:profile.nickname});render()}});
+          document.querySelectorAll('[data-ndec]').forEach(function(b){b.onclick=function(){var r=ss.requests.splice(Number(b.dataset.ndec),1)[0];if(r)send(r.code,{t:'friend_response',accepted:false,code:myCode(),nickname:profile.nickname});saveNet();render()}});
+          document.querySelectorAll('[data-ncan]').forEach(function(b){b.onclick=function(){ss.outgoing.splice(Number(b.dataset.ncan),1);saveNet();render()}});
+        }else if(mode==='find'){
+          var inp=document.getElementById('np-code'),name=document.getElementById('np-name'),st=document.getElementById('np-status');
+          inp.oninput=function(){inp.value=inp.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,9);name.value='';st.textContent=inp.value.length===9?'Press FIND to check if that player is online.':'Enter exactly 9 characters.'};
+          document.getElementById('np-find').onclick=function(){
+            var code=inp.value.toUpperCase();
+            if(!/^[A-Z0-9]{9}$/.test(code)||code===myCode()){st.textContent='Enter another player’s valid 9-character code.';return}
+            if(isFriend(code)){st.textContent='Already friends.';return}
+            if(ss.outgoing.some(function(r){return r.code===code})){st.textContent='REQUEST ALREADY SENT.';return}
+            st.textContent='CONNECTING...';
+            var c;
+            try{c=peer&&peer.connect(code,{reliable:true});if(!c){st.textContent='NETWORK UNAVAILABLE.';return}conns[code]=c;bindConn(c,code);c.on('open',function(){name.value='PLAYER '+code;ss.outgoing.push({code:code,nickname:'PLAYER '+code,at:Date.now(),status:'sent'});saveNet();try{c.send({t:'friend_request',code:myCode(),nickname:profile.nickname})}catch(e){}st.textContent='PLAYER FOUND ONLINE • REQUEST SENT';render();});c.on('error',function(){st.textContent='PLAYER NOT FOUND OR OFFLINE.'})}catch(e){st.textContent='PLAYER NOT FOUND OR OFFLINE.'}
+          };
+        }
+      }
+      render();
+    }
+    function netChatView(friend){
+      if(!friend||!isFriend(friend.code))return;
+      var ss=socialState(),key=friend.code, msgs=Array.isArray(ss.messages[key])?ss.messages[key]:[];
+      var rows=msgs.length?msgs.map(function(m){return '<div class="isx-card"><b>'+netEsc(m.from)+'</b><div style="margin-top:4px;color:#dce8f5">'+netEsc(m.text)+'</div></div>'}).join(''):'<div class="isx-note">No messages yet.</div>';
+      overlay('<h2>CHAT • '+netEsc(friend.nickname)+'</h2><div style="max-height:42vh;overflow:auto;text-align:left">'+rows+'</div><textarea class="isx-input" id="nchat-input" maxlength="300" rows="3" style="margin-top:10px;text-align:left" placeholder="Message this friend..."></textarea><div class="isx-row"><button class="action" id="nchat-send">SEND</button><button class="ghost" id="nchat-back">BACK</button></div><div class="isx-note">Only accepted friends can chat.</div>');
+      document.getElementById('nchat-send').onclick=function(){var text=(document.getElementById('nchat-input').value||'').trim();if(!text)return;if(!ss.messages[key])ss.messages[key]=[];ss.messages[key].push({from:profile.nickname,text:text,at:Date.now()});saveNet();if(!send(friend.code,{t:'chat',nickname:profile.nickname,text:text}))showCoinToast('FRIEND OFFLINE • MESSAGE SAVED LOCALLY');netChatView(friend)};
+      document.getElementById('nchat-back').onclick=netFriendsView;
+    }
+    function netGiftView(friend){
+      if(!friend||!isFriend(friend.code))return;
+      var skins=data.skins&&Array.isArray(data.skins.owned)?data.skins.owned.filter(function(x){return x!=='default'}):[];
+      var names={plasma:'NEON WRAITH',solar:'SOLAR SPEAR',toxic:'TOXIC MANTA',ghost:'PHANTOM ARC',void:'VOID CROWN',ember:'EMBER TALON',crystal:'CRYSTAL NOVA'};
+      var opts='<option value="">SELECT SKIN</option>'+skins.map(function(id){return '<option value="'+netEsc(id)+'">'+netEsc(names[id]||id.toUpperCase())+'</option>'}).join('');
+      overlay('<h2>GIFT • '+netEsc(friend.nickname)+'</h2><div class="isx-card"><b>GIFT COINS</b><input class="isx-input" id="ng-coins" type="number" min="1" max="'+Math.floor(data.coins||0)+'" value="1" style="margin-top:8px"><div class="isx-row"><button class="action" id="ng-send-coins">SEND COINS</button></div></div><div class="isx-card" style="margin-top:10px"><b>GIFT SKIN</b><select class="isx-input" id="ng-skin" style="margin-top:8px">'+opts+'</select><div class="isx-row"><button class="action" id="ng-send-skin">SEND SKIN</button></div></div><div class="isx-row"><button class="ghost" id="ng-close">CLOSE</button></div>');
+      document.getElementById('ng-close').onclick=closeOverlay;
+      document.getElementById('ng-send-coins').onclick=function(){var a=Math.max(0,Math.floor(Number(document.getElementById('ng-coins').value)||0));if(!a||a>Number(data.coins||0)){showCoinToast('NOT ENOUGH COINS');return}if(!send(friend.code,{t:'gift_coins',amount:a,nickname:profile.nickname})){showCoinToast('FRIEND IS OFFLINE');return}data.coins-=a;socialState().gifts.push({nickname:friend.nickname,type:'coins',amount:a,status:'sent',at:Date.now()});saveNet();uiCoins();showCoinToast('-'+a+' COINS • GIFT SENT');closeOverlay()};
+      document.getElementById('ng-send-skin').onclick=function(){var id=document.getElementById('ng-skin').value;if(!id){showCoinToast('SELECT A SKIN');return}var owned=data.skins.owned||[];if(owned.indexOf(id)<0){showCoinToast('SKIN NOT OWNED');return}if(!send(friend.code,{t:'gift_skin',skin:id,nickname:profile.nickname})){showCoinToast('FRIEND IS OFFLINE');return}data.skins.owned=owned.filter(function(x){return x!==id});if(data.skins.selected===id){data.skins.selected='default';if(window.__ISX_FORCE_SKIN)window.__ISX_FORCE_SKIN('default')}socialState().gifts.push({nickname:friend.nickname,type:'skin',skin:id,status:'sent',at:Date.now()});saveNet();showCoinToast('SKIN GIFT SENT');closeOverlay()};
+    }
+    function startNetworkDuel(code,room){
+      if(!room||!room.host)return;
+      send(room.host,{t:'duel_ready',code:code,code9:myCode(),nickname:profile.nickname});
+      /* Use the existing deterministic duel engine; both players receive the same seed. */
+      try{duel.code=code;dailyMode=false;dailySeed=room.seed;currentDuelCode=code;startDuel(room.seed,room.nickname||'OPPONENT')}catch(e){showCoinToast('DUEL START FAILED')}
+    }
+    function netDuelView(){
+      if(!profile.nickname){profilePrompt();return}
+      overlay('<h2>DUELS</h2><p>Every duel code is exactly 9 characters. Create a code and send it to a friend, or enter a friend’s duel code.</p><div class="isx-card"><b>CREATE DUEL</b><div class="isx-row"><button class="action" id="nd-create">CREATE 9-CHAR DUEL CODE</button></div><div id="nd-created" class="isx-note"></div></div><div class="isx-card" style="margin-top:10px"><b>JOIN DUEL</b><input class="isx-input" id="nd-join" maxlength="9" placeholder="9-CHAR DUEL CODE"><div class="isx-note">A duel code identifies the host. Enter the host’s 9-character Friend Code.</div></div><div id="nd-status" class="isx-note"></div><div class="isx-row"><button class="ghost" id="nd-close">CLOSE</button></div>');
+      document.getElementById('nd-close').onclick=closeOverlay;
+      document.getElementById('nd-create').onclick=function(){
+        var code=myCode(),seed='DUEL-'+Date.now().toString(36).toUpperCase()+'-'+hash(profile.nickname+'|'+Date.now()).slice(0,8);
+        duelRooms[code]={host:code,seed:seed,nickname:profile.nickname};netSet(NET_KEY,{duelRooms:duelRooms});
+        document.getElementById('nd-created').innerHTML='<b>YOUR 9-CHAR DUEL CODE</b><div class="isx-code">'+netEsc(code)+'</div><p>Send this 9-character code to your friend. The duel will NOT start until they enter the code.</p><div class="isx-note">WAITING FOR OPPONENT…</div>';
+      };
+      document.getElementById('nd-join').oninput=function(){this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,9)};
+      document.getElementById('nd-join').onchange=function(){var code=this.value.toUpperCase(),st=document.getElementById('nd-status');if(!/^[A-Z0-9]{9}$/.test(code)){st.textContent='Enter exactly 9 characters.';return}if(code===myCode()){st.textContent='That is your own Friend/Duel code.';return}st.textContent='CONNECTING TO HOST...';var c;try{c=peer&&peer.connect(code,{reliable:true});if(!c){st.textContent='NETWORK UNAVAILABLE.';return}conns[code]=c;bindConn(c,code);c.on('open',function(){try{c.send({t:'duel_request',code:code,nickname:profile.nickname})}catch(e){}st.textContent='HOST FOUND • WAITING FOR DUEL START';});c.on('error',function(){st.textContent='DUEL CODE NOT FOUND / HOST OFFLINE.'})}catch(e){st.textContent='DUEL CODE NOT FOUND / HOST OFFLINE.'}};
+    }
+    /* Replace the offline-only views with P2P views. */
+    window.__ISX_P2P_INIT=initPeer;
+    window.__ISX_LOCAL_VIEWS.friends=netFriendsView;
+    window.__ISX_LOCAL_VIEWS.duels=netDuelView;
+    var fb2=document.getElementById('btn-friends');if(fb2)fb2.onclick=netFriendsView;
+    var db2=document.getElementById('btn-duels');if(db2)db2.onclick=netDuelView;
+    if(profile.nickname)setTimeout(initPeer,150);
+    window.__ISX_P2P_STATUS=function(){return {ready:peerReady,status:netStatus,code:myCode()}};
+  })();
 
   /* The core animate loop calls this hook if present. */
   var originalAnimateRender=window.__ISX_DUEL_RENDER;
