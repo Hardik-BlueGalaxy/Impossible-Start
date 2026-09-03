@@ -1810,7 +1810,15 @@ button{touch-action:manipulation}
     return out;
   }
   function profileCode(nick){
-    if(profile&&profile.friendCode&&/^[A-Z0-9]{9}$/.test(profile.friendCode))return profile.friendCode;
+    if(profile&&/^[A-Z0-9]{9}$/.test(String(profile.friendCode||'')))return String(profile.friendCode).toUpperCase();
+    /* IMPORTANT: generate once and persist it. Never generate a new code just
+       because the HUD/profile UI is redrawn. */
+    if(profile){
+      profile.friendCode=randomCode9();
+      try{set(PROFILE,JSON.stringify(profile))}catch(e){}
+      if(profile.nickname)rememberCode(profile.friendCode,profile.nickname);
+      return profile.friendCode;
+    }
     return randomCode9();
   }
   function decodeFriendCode(code){
@@ -1911,6 +1919,16 @@ button{touch-action:manipulation}
         if(storedData.skins)data.skins=storedData.skins;
       }
       if(Array.isArray(storedFriends)) friends=storedFriends;
+      /* Repair older saves that stored a profile without the new 9-char code.
+         This runs after the master-state restore, so the repaired code is not
+         overwritten again by an older master snapshot. */
+      if(!profile.friendCode||!/^[A-Z0-9]{9}$/.test(String(profile.friendCode))){
+        profile.friendCode=randomCode9();
+      }else{
+        profile.friendCode=String(profile.friendCode).toUpperCase();
+      }
+      if(profile.nickname)rememberCode(profile.friendCode,profile.nickname);
+      set(PROFILE,JSON.stringify(profile));
       updateIdentityUI();
       try{applySkin();}catch(e){}
       if(profile.nickname){
@@ -1937,7 +1955,7 @@ button{touch-action:manipulation}
   }
   function updateIdentityUI(){
     var bar=document.getElementById('online-bar');if(bar)bar.textContent=profile.nickname?'LOCAL • '+profile.nickname:'CREATE PROFILE';
-    var code=profile.friendCode||profileCode(profile.nickname||'PLAYER');
+    var code=profileCode(profile.nickname||'PLAYER');
     var display=document.getElementById('isx-friend-code-display');if(display)display.textContent=code;
     var n=document.getElementById('isx-profile-name');if(n)n.textContent=profile.nickname||'NOT CREATED';
     var c=document.getElementById('isx-profile-code');if(c)c.textContent=profile.nickname?code:'CREATE PROFILE';
@@ -2543,9 +2561,11 @@ button{touch-action:manipulation}
         peer.on('error',function(e){
           peerReady=false;netStatus=(e&&e.type==='unavailable-id')?'CODE BUSY':'NETWORK ERROR';
           if(e&&e.type==='unavailable-id'){
-            /* A collision is exceptionally unlikely, but regenerate safely. */
+            /* Never change a user's Friend Code automatically. A duplicate code
+               means this exact identity is already connected somewhere else. */
             try{peer.destroy()}catch(x){}
-            profile.friendCode=code9();saveNet();setTimeout(initPeer,300);
+            peer=null; peerReady=false; netStatus='CODE ALREADY IN USE';
+            updateIdentityUI();
           }
         });
         peer.on('disconnected',function(){peerReady=false;netStatus='RECONNECTING';try{peer.reconnect()}catch(e){}});
@@ -2582,7 +2602,8 @@ button{touch-action:manipulation}
           inp.oninput=function(){inp.value=inp.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,9);name.value='';st.textContent=inp.value.length===9?'Press FIND to check if that player is online.':'Enter exactly 9 characters.'};
           document.getElementById('np-find').onclick=function(){
             var code=inp.value.toUpperCase();
-            if(!/^[A-Z0-9]{9}$/.test(code)||code===myCode()){st.textContent='Enter another player’s valid 9-character code.';return}
+            if(!/^[A-Z0-9]{9}$/.test(code)){st.textContent='Enter exactly 9 letters/numbers.';return}
+            if(code===myCode()){st.textContent='That is YOUR Friend Code. Enter the other player’s code.';return}
             if(isFriend(code)){st.textContent='Already friends.';return}
             if(ss.outgoing.some(function(r){return r.code===code})){st.textContent='REQUEST ALREADY SENT.';return}
             st.textContent='CONNECTING...';
@@ -2619,7 +2640,7 @@ button{touch-action:manipulation}
     }
     function netDuelView(){
       if(!profile.nickname){profilePrompt();return}
-      overlay('<h2>DUELS</h2><p>Every duel code is exactly 9 characters. Create a code and send it to a friend, or enter a friend’s duel code.</p><div class="isx-card"><b>CREATE DUEL</b><div class="isx-row"><button class="action" id="nd-create">CREATE 9-CHAR DUEL CODE</button></div><div id="nd-created" class="isx-note"></div></div><div class="isx-card" style="margin-top:10px"><b>JOIN DUEL</b><input class="isx-input" id="nd-join" maxlength="9" placeholder="9-CHAR DUEL CODE"><div class="isx-note">A duel code identifies the host. Enter the host’s 9-character Friend Code.</div></div><div id="nd-status" class="isx-note"></div><div class="isx-row"><button class="ghost" id="nd-close">CLOSE</button></div>');
+      overlay('<h2>DUELS</h2><p>Every duel code is exactly 9 characters. Create a code and send it to a friend, or enter a friend’s duel code.</p><div class="isx-card"><b>CREATE DUEL</b><div class="isx-row"><button class="action" id="nd-create">CREATE 9-CHAR DUEL CODE</button></div><div id="nd-created" class="isx-note"></div></div><div class="isx-card" style="margin-top:10px"><b>JOIN DUEL</b><input class="isx-input" id="nd-join" maxlength="9" placeholder="9-CHAR DUEL CODE"><div class="isx-note">Enter the host’s exact 9-character Duel Code.</div></div><div id="nd-status" class="isx-note"></div><div class="isx-row"><button class="ghost" id="nd-close">CLOSE</button></div>');
       document.getElementById('nd-close').onclick=closeOverlay;
       document.getElementById('nd-create').onclick=function(){
         var code=myCode(),seed='DUEL-'+Date.now().toString(36).toUpperCase()+'-'+hash(profile.nickname+'|'+Date.now()).slice(0,8);
