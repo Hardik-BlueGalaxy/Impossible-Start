@@ -2552,24 +2552,26 @@ button{touch-action:manipulation}
       }
     }
     function initPeer(){
-      if(peer||!profile.nickname||!window.Peer)return;
+      if(peer||!profile.nickname)return;
+      if(!window.Peer){netStatus='LOADING NETWORK…';setTimeout(initPeer,500);return}
       var id=myCode();
       try{
-        peer=new Peer(id,{debug:0});
-        peer.on('open',function(openId){peerReady=true;netStatus='ONLINE';profile.friendCode=String(openId).toUpperCase();saveNet();updateIdentityUI();friends.forEach(function(f){send(f.code,{t:'hello',code:myCode(),nickname:profile.nickname})})});
+        netStatus='CONNECTING…';
+        peer=new Peer(id,{host:'0.peerjs.com',port:443,path:'/',secure:true,debug:0});
+        peer.on('open',function(openId){
+          var opened=String(openId||'').toUpperCase();
+          if(opened!==myCode()){netStatus='CODE MISMATCH';try{peer.destroy()}catch(e){}peer=null;peerReady=false;return}
+          peerReady=true;netStatus='ONLINE';saveNet();updateIdentityUI();
+          friends.forEach(function(f){send(f.code,{t:'hello',code:myCode(),nickname:profile.nickname})});
+        });
         peer.on('connection',function(c){var rc=String(c.peer||'').toUpperCase();conns[rc]=c;bindConn(c,rc)});
         peer.on('error',function(e){
-          peerReady=false;netStatus=(e&&e.type==='unavailable-id')?'CODE BUSY':'NETWORK ERROR';
-          if(e&&e.type==='unavailable-id'){
-            /* Never change a user's Friend Code automatically. A duplicate code
-               means this exact identity is already connected somewhere else. */
-            try{peer.destroy()}catch(x){}
-            peer=null; peerReady=false; netStatus='CODE ALREADY IN USE';
-            updateIdentityUI();
-          }
+          peerReady=false;
+          netStatus=(e&&e.type==='unavailable-id')?'CODE ALREADY IN USE':'NETWORK ERROR';
+          if(e&&e.type==='unavailable-id'){try{peer.destroy()}catch(x){}peer=null;updateIdentityUI()}
         });
-        peer.on('disconnected',function(){peerReady=false;netStatus='RECONNECTING';try{peer.reconnect()}catch(e){}});
-      }catch(e){netStatus='NETWORK UNAVAILABLE'}
+        peer.on('disconnected',function(){peerReady=false;netStatus='RECONNECTING…';try{peer.reconnect()}catch(e){}});
+      }catch(e){peer=null;peerReady=false;netStatus='NETWORK UNAVAILABLE'}
     }
     function netEsc(v){return esc(v)}
     function netFriendsView(){
@@ -2605,10 +2607,24 @@ button{touch-action:manipulation}
             if(!/^[A-Z0-9]{9}$/.test(code)){st.textContent='Enter exactly 9 letters/numbers.';return}
             if(code===myCode()){st.textContent='That is YOUR Friend Code. Enter the other player’s code.';return}
             if(isFriend(code)){st.textContent='Already friends.';return}
-            if(ss.outgoing.some(function(r){return r.code===code})){st.textContent='REQUEST ALREADY SENT.';return}
-            st.textContent='CONNECTING...';
-            var c;
-            try{c=peer&&peer.connect(code,{reliable:true});if(!c){st.textContent='NETWORK UNAVAILABLE.';return}conns[code]=c;bindConn(c,code);c.on('open',function(){name.value='PLAYER '+code;ss.outgoing.push({code:code,nickname:'PLAYER '+code,at:Date.now(),status:'sent'});saveNet();try{c.send({t:'friend_request',code:myCode(),nickname:profile.nickname})}catch(e){}st.textContent='PLAYER FOUND ONLINE • REQUEST SENT';render();});c.on('error',function(){st.textContent='PLAYER NOT FOUND OR OFFLINE.'})}catch(e){st.textContent='PLAYER NOT FOUND OR OFFLINE.'}
+            if(ss.outgoing.some(function(r){return String(r.code).toUpperCase()===code})){st.textContent='REQUEST ALREADY SENT.';return}
+            if(!peerReady||!peer){st.textContent='NETWORK IS NOT READY. Wait until P2P STATUS says ONLINE.';return}
+            st.textContent='CONNECTING TO '+code+'…';name.value='';
+            var c=null,done=false;
+            function fail(msg){if(done)return;done=true;st.textContent=msg;try{if(c)c.close()}catch(e){}}
+            try{
+              c=peer.connect(code,{reliable:true,serialization:'json'});
+              if(!c){fail('NETWORK CONNECTION FAILED.');return}
+              conns[code]=c;bindConn(c,code);
+              var timer=setTimeout(function(){fail('PLAYER NOT FOUND OR OFFLINE. Both players must have the game open.')},12000);
+              c.on('open',function(){
+                if(done)return;done=true;clearTimeout(timer);name.value='ONLINE PLAYER';
+                if(!ss.outgoing.some(function(r){return String(r.code).toUpperCase()===code})){ss.outgoing.push({code:code,nickname:'ONLINE PLAYER',at:Date.now(),status:'sent'});saveNet()}
+                try{c.send({t:'friend_request',code:myCode(),nickname:profile.nickname})}catch(e){st.textContent='CONNECTED BUT REQUEST COULD NOT BE SENT.';return}
+                st.textContent='PLAYER FOUND ONLINE • REQUEST SENT';render();
+              });
+              c.on('error',function(){clearTimeout(timer);fail('PLAYER NOT FOUND OR OFFLINE. Both players must have the game open.')});
+            }catch(e){fail('NETWORK CONNECTION FAILED. Check HTTPS/GitHub Pages.') }
           };
         }
       }
@@ -2640,15 +2656,34 @@ button{touch-action:manipulation}
     }
     function netDuelView(){
       if(!profile.nickname){profilePrompt();return}
-      overlay('<h2>DUELS</h2><p>Every duel code is exactly 9 characters. Create a code and send it to a friend, or enter a friend’s duel code.</p><div class="isx-card"><b>CREATE DUEL</b><div class="isx-row"><button class="action" id="nd-create">CREATE 9-CHAR DUEL CODE</button></div><div id="nd-created" class="isx-note"></div></div><div class="isx-card" style="margin-top:10px"><b>JOIN DUEL</b><input class="isx-input" id="nd-join" maxlength="9" placeholder="9-CHAR DUEL CODE"><div class="isx-note">Enter the host’s exact 9-character Duel Code.</div></div><div id="nd-status" class="isx-note"></div><div class="isx-row"><button class="ghost" id="nd-close">CLOSE</button></div>');
+      overlay('<h2>DUELS</h2><p>Every duel code is exactly 9 characters. Create a code and send it to a friend, or enter a friend’s duel code.</p><div class="isx-card"><b>CREATE DUEL</b><div class="isx-row"><button class="action" id="nd-create">CREATE 9-CHAR DUEL CODE</button></div><div id="nd-created" class="isx-note"></div></div><div class="isx-card" style="margin-top:10px"><b>JOIN DUEL</b><input class="isx-input" id="nd-join" maxlength="9" placeholder="9-CHAR DUEL CODE"><div class="isx-row"><button class="action" id="nd-join-btn">JOIN DUEL</button></div><div class="isx-note">Enter the host’s exact 9-character Duel Code, then press JOIN DUEL.</div></div><div id="nd-status" class="isx-note"></div><div class="isx-row"><button class="ghost" id="nd-close">CLOSE</button></div>');
       document.getElementById('nd-close').onclick=closeOverlay;
       document.getElementById('nd-create').onclick=function(){
         var code=myCode(),seed='DUEL-'+Date.now().toString(36).toUpperCase()+'-'+hash(profile.nickname+'|'+Date.now()).slice(0,8);
         duelRooms[code]={host:code,seed:seed,nickname:profile.nickname};netSet(NET_KEY,{duelRooms:duelRooms});
         document.getElementById('nd-created').innerHTML='<b>YOUR 9-CHAR DUEL CODE</b><div class="isx-code">'+netEsc(code)+'</div><p>Send this 9-character code to your friend. The duel will NOT start until they enter the code.</p><div class="isx-note">WAITING FOR OPPONENT…</div>';
       };
-      document.getElementById('nd-join').oninput=function(){this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,9)};
-      document.getElementById('nd-join').onchange=function(){var code=this.value.toUpperCase(),st=document.getElementById('nd-status');if(!/^[A-Z0-9]{9}$/.test(code)){st.textContent='Enter exactly 9 characters.';return}if(code===myCode()){st.textContent='That is your own Friend/Duel code.';return}st.textContent='CONNECTING TO HOST...';var c;try{c=peer&&peer.connect(code,{reliable:true});if(!c){st.textContent='NETWORK UNAVAILABLE.';return}conns[code]=c;bindConn(c,code);c.on('open',function(){try{c.send({t:'duel_request',code:code,nickname:profile.nickname})}catch(e){}st.textContent='HOST FOUND • WAITING FOR DUEL START';});c.on('error',function(){st.textContent='DUEL CODE NOT FOUND / HOST OFFLINE.'})}catch(e){st.textContent='DUEL CODE NOT FOUND / HOST OFFLINE.'}};
+      var joinInput=document.getElementById('nd-join');
+      joinInput.oninput=function(){this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,9)};
+      function joinDuel(){
+        var code=joinInput.value.toUpperCase(),st=document.getElementById('nd-status');
+        if(!/^[A-Z0-9]{9}$/.test(code)){st.textContent='Enter exactly 9 characters.';return}
+        if(code===myCode()){st.textContent='That is your own Friend/Duel code.';return}
+        if(!peerReady||!peer){st.textContent='NETWORK IS NOT READY. Wait until P2P STATUS says ONLINE.';return}
+        st.textContent='CONNECTING TO HOST '+code+'…';
+        var c=null,done=false;
+        function fail(msg){if(done)return;done=true;st.textContent=msg;try{if(c)c.close()}catch(e){}}
+        try{
+          c=peer.connect(code,{reliable:true,serialization:'json'});
+          if(!c){fail('NETWORK CONNECTION FAILED.');return}
+          conns[code]=c;bindConn(c,code);
+          var timer=setTimeout(function(){fail('DUEL HOST NOT FOUND / OFFLINE. Keep the host’s game open and try again.')},12000);
+          c.on('open',function(){if(done)return;done=true;clearTimeout(timer);try{c.send({t:'duel_request',code:code,nickname:profile.nickname});st.textContent='HOST FOUND • WAITING FOR DUEL START…'}catch(e){fail('CONNECTED BUT DUEL REQUEST FAILED.')}});
+          c.on('error',function(){clearTimeout(timer);fail('DUEL HOST NOT FOUND / OFFLINE.')});
+        }catch(e){fail('NETWORK CONNECTION FAILED. Check HTTPS/GitHub Pages.')}
+      }
+      document.getElementById('nd-join-btn').onclick=joinDuel;
+      joinInput.onkeydown=function(e){if(e.key==='Enter'){e.preventDefault();joinDuel()}};
     }
     /* Replace the offline-only views with P2P views. */
     window.__ISX_P2P_INIT=initPeer;
