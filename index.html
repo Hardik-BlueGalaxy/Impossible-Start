@@ -1792,23 +1792,58 @@ button{touch-action:manipulation}
   function hash(s){var h=2166136261;for(var i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return (h>>>0).toString(36).toUpperCase()}
   function b64(s){try{return btoa(unescape(encodeURIComponent(s))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')}catch(e){return ''}}
   function ub64(s){try{var p=String(s).replace(/-/g,'+').replace(/_/g,'/');while(p.length%4)p+='=';return decodeURIComponent(escape(atob(p)))}catch(e){return ''}}
-  function profileCode(nick){if(String(nick||'').toUpperCase()==='HARDIK')return 'ISX-SEFSRE1L-OP8';return 'ISX-'+b64(nick||'PLAYER')+'-'+hash(nick||'PLAYER').slice(-3)}
-  function decodeFriendCode(code){
-    if(String(code||'').trim().toUpperCase()==='ISX-SEFSRE1L-OP8')return 'HARDIK';
-    var m=String(code||'').trim().match(/^ISX-([A-Za-z0-9_-]+)-([A-Za-z0-9]{3})$/i);
-    if(!m)return '';
-    var n=ub64(m[1]);
-    if(!/^[A-Za-z0-9_ -]{3,16}$/.test(n||''))return '';
-    return hash(n).slice(-3)===m[2] ? n : '';
+  /* 9-character social/duel codes.
+     A 9-char code cannot losslessly encode a 16-char nickname, so codes are
+     persistent opaque IDs. The local code book resolves them in this
+     standalone HTML build. Cross-device delivery still needs a server. */
+  var CODE_ALPH='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  function randomCode9(){
+    var out='';
+    try{
+      var a=new Uint32Array(9);
+      if(window.crypto&&crypto.getRandomValues)crypto.getRandomValues(a);
+      for(var i=0;i<9;i++)out+=CODE_ALPH[a[i]%CODE_ALPH.length];
+    }catch(e){
+      for(var j=0;j<9;j++)out+=CODE_ALPH[Math.floor(Math.random()*CODE_ALPH.length)];
+    }
+    return out;
   }
-  function duelCode(nick,seed){return 'ISD-'+b64((nick||'PLAYER')+'|'+seed)}
+  function profileCode(nick){
+    if(profile&&profile.friendCode&&/^[A-Z0-9]{9}$/.test(profile.friendCode))return profile.friendCode;
+    return randomCode9();
+  }
+  function decodeFriendCode(code){
+    code=String(code||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
+    if(!/^[A-Z0-9]{9}$/.test(code))return '';
+    try{
+      var book=json('impossible-start:codebook:v2',{});
+      return book&&book[code]&&book[code].nickname ? book[code].nickname : '';
+    }catch(e){return ''}
+  }
+  function rememberCode(code,nick){
+    try{
+      var book=json('impossible-start:codebook:v2',{});
+      book[code]={nickname:nick,at:Date.now()};
+      set('impossible-start:codebook:v2',JSON.stringify(book));
+    }catch(e){}
+  }
+  function duelCode(nick,seed){
+    var code=randomCode9();
+    try{
+      var rooms=json('impossible-start:duel-rooms:v2',{});
+      rooms[code]={nickname:nick||'PLAYER',seed:seed,created:Date.now()};
+      set('impossible-start:duel-rooms:v2',JSON.stringify(rooms));
+    }catch(e){}
+    return code;
+  }
   function decodeDuelCode(code){
-    var raw=ub64(String(code||'').trim().replace(/^ISD-/i,''));
-    var i=raw.indexOf('|');
-    if(i<1)return null;
-    var n=raw.slice(0,i),seed=raw.slice(i+1);
-    if(!/^[A-Za-z0-9_ -]{3,16}$/.test(n)||!seed)return null;
-    return {nickname:n,seed:seed};
+    code=String(code||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
+    if(!/^[A-Z0-9]{9}$/.test(code))return null;
+    try{
+      var rooms=json('impossible-start:duel-rooms:v2',{});
+      var r=rooms[code];
+      return r&&r.seed ? {nickname:r.nickname||'OPPONENT',seed:r.seed,code:code} : null;
+    }catch(e){return null}
   }
 
   var old=json('impossible-start:upgrade:v3',{});
@@ -1822,9 +1857,17 @@ button{touch-action:manipulation}
     data.stats.bestDistance=Math.max(Number(data.stats.bestDistance)||0,Number(coreSaved.stats.totalDistance)||0);
   }
   data.achievements=data.achievements||{}; data.daily=data.daily||{};
-  data.social=data.social||{pending:[],requests:[],messages:{},gifts:[]};
+  data.social=data.social||{pending:[],requests:[],outgoing:[],messages:{},gifts:[]};
   if(!Array.isArray(data.social.pending))data.social.pending=[];
   if(!Array.isArray(data.social.requests))data.social.requests=[];
+  if(!Array.isArray(data.social.outgoing))data.social.outgoing=[];
+  /* v3 used pending for outgoing requests, which made the sender see
+     ACCEPT/DECLINE. Migrate those records to the outgoing queue. */
+  if(data.social.pending.length && !data.social._v4Migrated){
+    data.social.outgoing=data.social.outgoing.concat(data.social.pending);
+    data.social.pending=[];
+    data.social._v4Migrated=true;
+  }
   if(!data.social.messages||typeof data.social.messages!=='object')data.social.messages={};
   if(!Array.isArray(data.social.gifts))data.social.gifts=[];
   data.redeemedCodes=Array.isArray(data.redeemedCodes)?data.redeemedCodes:[];
@@ -1834,8 +1877,11 @@ button{touch-action:manipulation}
   if(!data.skins.owned.includes('default'))data.skins.owned.unshift('default');
   if(!data.skins.selected)data.skins.selected='default';
   var profile=json(PROFILE,null);
-  if(!profile){profile={id:(crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2)),nickname:''};set(PROFILE,JSON.stringify(profile))}
+  if(!profile){profile={id:(crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2)),nickname:'',friendCode:randomCode9()};set(PROFILE,JSON.stringify(profile))}
+  if(!profile.friendCode||!/^[A-Z0-9]{9}$/.test(profile.friendCode))profile.friendCode=randomCode9();
+  if(profile.nickname)rememberCode(profile.friendCode,profile.nickname);
   var friends=json(FRIENDS,[]); if(!Array.isArray(friends))friends=[];
+  friends.forEach(function(f){if(f.code&&/^[A-Z0-9]{9}$/.test(f.code)&&f.nickname)rememberCode(f.code,f.nickname);});
   var duel={active:false,seed:null,opponent:'OPPONENT',code:null,opponentX:0,opponentY:0,opponentScore:0,aiT:0};
   var run={active:false,mode:'normal',coinsStart:0};
   var oldStatsBest=Math.max(Number(data.stats.best)||0,Number((old.stats||{}).best)||0);data.stats.best=oldStatsBest;
@@ -1890,7 +1936,7 @@ button{touch-action:manipulation}
   }
   function updateIdentityUI(){
     var bar=document.getElementById('online-bar');if(bar)bar.textContent=profile.nickname?'LOCAL • '+profile.nickname:'CREATE PROFILE';
-    var code=profileCode(profile.nickname||'PLAYER');
+    var code=profile.friendCode||profileCode(profile.nickname||'PLAYER');
     var display=document.getElementById('isx-friend-code-display');if(display)display.textContent=code;
     var n=document.getElementById('isx-profile-name');if(n)n.textContent=profile.nickname||'NOT CREATED';
     var c=document.getElementById('isx-profile-code');if(c)c.textContent=profile.nickname?code:'CREATE PROFILE';
@@ -1901,8 +1947,11 @@ button{touch-action:manipulation}
     var input=document.getElementById('nickname-input'),st=document.getElementById('nickname-status');
     var n=(input&&input.value||'').trim();
     if(!/^[A-Za-z0-9_ -]{3,16}$/.test(n)){if(st)st.textContent='Use 3–16 letters, numbers, spaces, _ or -.';return}
-    profile.nickname=n;save();updateIdentityUI();
-    if(st)st.innerHTML='ACCOUNT CREATED • YOUR FRIEND CODE:<br><b style="color:var(--cyan);font-size:18px;letter-spacing:2px">'+esc(profileCode(n))+'</b>';
+    profile.nickname=n;
+    if(!profile.friendCode||!/^[A-Z0-9]{9}$/.test(profile.friendCode))profile.friendCode=randomCode9();
+    rememberCode(profile.friendCode,n);
+    save();updateIdentityUI();
+    if(st)st.innerHTML='ACCOUNT CREATED • YOUR FRIEND CODE:<br><b style="color:var(--cyan);font-size:18px;letter-spacing:2px">'+esc(profile.friendCode)+'</b>';
     setTimeout(function(){document.getElementById('nickname-screen').classList.add('hidden');document.getElementById('screen-menu').classList.remove('hidden');},900);
   }
   var nb=document.getElementById('btn-save-nickname');
@@ -1925,45 +1974,55 @@ button{touch-action:manipulation}
   /* Make the Friend UI bidirectional: code -> nickname and nickname -> code. */
   function friendsView(){
     if(!profilePrompt())return;
-    data.social=data.social||{pending:[],requests:[],messages:{},gifts:[]};
+    data.social=data.social||{pending:[],requests:[],outgoing:[],messages:{},gifts:[]};
     data.social.pending=Array.isArray(data.social.pending)?data.social.pending:[];
     data.social.requests=Array.isArray(data.social.requests)?data.social.requests:[];
+    data.social.outgoing=Array.isArray(data.social.outgoing)?data.social.outgoing:[];
     data.social.messages=data.social.messages&&typeof data.social.messages==='object'?data.social.messages:{};
     data.social.gifts=Array.isArray(data.social.gifts)?data.social.gifts:[];
-    if(Array.isArray(data.social.challenges)&&!data.social.gifts.length)data.social.gifts=data.social.challenges.map(function(c){return {to:c.to,nickname:c.nickname,type:c.reward==='skin'?'skin':'coins',amount:c.reward==='skin'?0:25,skin:c.skin,at:c.at,status:'legacy'}});
 
     function tabButton(id,label,active){return '<button class="'+(active?'action':'ghost')+'" id="'+id+'">'+label+'</button>'}
     function friendRows(){
       if(!friends.length)return '<div class="isx-note">No friends yet. Use FIND PEOPLE to add someone by Friend Code.</div>';
       return friends.map(function(f,i){
-        var key=f.code||('friend-'+i), msgs=(data.social.messages[key]||[]).length;
-        return '<div class="isx-friend"><span><b>'+esc(f.nickname)+'</b><br><span class="isx-muted">'+esc(f.code||'')+(msgs?' • '+msgs+' MSG':'')+'</span></span>'+
+        var key=f.code||f.friendCode||('friend-'+i), msgs=(data.social.messages[key]||[]).length;
+        return '<div class="isx-friend"><span><b>'+esc(f.nickname)+'</b><br><span class="isx-muted">'+esc(key)+(msgs?' • '+msgs+' MSG':'')+'</span></span>'+
           '<span class="friend-actions"><button class="ghost" data-chat="'+i+'">CHAT</button><button class="ghost" data-gift="'+i+'">GIFT</button><button class="ghost isx-danger" data-rm="'+i+'">REMOVE</button></span></div>';
       }).join('');
     }
-    function requestRows(){
-      var rs=data.social.pending;
+    function incomingRows(){
+      var rs=data.social.requests;
       return rs.length?rs.map(function(r,i){
-        return '<div class="isx-friend"><span><b>'+esc(r.nickname)+'</b><br><span class="isx-muted">'+esc(r.code)+'</span></span>'+
+        return '<div class="isx-friend"><span><b>'+esc(r.nickname)+'</b><br><span class="isx-muted">'+esc(r.code)+'</span><br><span class="isx-muted">INCOMING REQUEST</span></span>'+
           '<span class="friend-actions"><button class="action" data-accept="'+i+'">ACCEPT</button><button class="ghost isx-danger" data-decline="'+i+'">DECLINE</button></span></div>';
-      }).join(''):'<div class="isx-note">No pending requests.</div>';
+      }).join(''):'<div class="isx-note">No incoming requests.</div>';
+    }
+    function outgoingRows(){
+      var rs=data.social.outgoing;
+      return rs.length?rs.map(function(r,i){
+        return '<div class="isx-friend"><span><b>'+esc(r.nickname)+'</b><br><span class="isx-muted">'+esc(r.code)+'</span><br><span class="isx-muted">REQUEST SENT • WAITING FOR ACCEPTANCE</span></span>'+
+          '<span class="friend-actions"><button class="ghost isx-danger" data-cancel="'+i+'">CANCEL</button></span></div>';
+      }).join(''):'<div class="isx-note">No outgoing requests.</div>';
     }
 
     function render(mode){
       var body='';
       if(mode==='friends'){
-        body='<div class="isx-card"><b>YOUR FRIEND CODE</b><div class="isx-code">'+esc(profileCode(profile.nickname))+'</div><p>Only people you accept appear in Friends.</p></div><div class="isx-card" style="margin-top:10px">'+friendRows()+'</div>';
+        body='<div class="isx-card"><b>YOUR FRIEND CODE</b><div class="isx-code">'+esc(profile.friendCode)+'</div><p>Exactly 9 characters. Only accepted players appear in Friends.</p></div><div class="isx-card" style="margin-top:10px">'+friendRows()+'</div>';
       }else if(mode==='pending'){
-        body='<div class="isx-card"><b>PENDING REQUESTS</b>'+requestRows()+'</div>';
+        body='<div class="isx-card"><b>INCOMING REQUESTS</b>'+incomingRows()+'</div><div class="isx-card" style="margin-top:10px"><b>OUTGOING REQUESTS</b>'+outgoingRows()+'</div>';
       }else if(mode==='gifts'){
         var gifts=data.social.gifts||[];
-        body='<div class="isx-card"><b>GIFT HISTORY</b>'+ (gifts.length?gifts.slice().reverse().map(function(g,i){var label=g.type==='skin'?((SKINS.find(function(s){return s.id===g.skin})||{}).name||'SKIN'):(String(g.amount)+' COINS');return '<div class="isx-friend"><span><b>'+esc(g.nickname)+'</b><br><span class="isx-muted">'+esc(label)+' • '+esc(g.status||'sent')+'</span></span><span class="isx-muted">SENT</span></div>'}).join(''):'<div class="isx-note">No gifts sent yet.</div>')+'</div>';
+        body='<div class="isx-card"><b>GIFT HISTORY</b>'+ (gifts.length?gifts.slice().reverse().map(function(g){
+          var label=g.type==='skin'?((SKINS.find(function(s){return s.id===g.skin})||{}).name||'SKIN'):(String(g.amount)+' COINS');
+          return '<div class="isx-friend"><span><b>'+esc(g.nickname)+'</b><br><span class="isx-muted">'+esc(label)+' • '+esc(g.status||'sent')+'</span></span><span class="isx-muted">SENT</span></div>';
+        }).join(''):'<div class="isx-note">No gifts sent yet.</div>')+'</div>';
       }else if(mode==='find'){
-        body='<div class="isx-card"><b>FIND PEOPLE</b><p>Enter a Friend Code. A request is created first; it does not instantly add the person.</p><input class="isx-input" id="isx-find-code" maxlength="120" placeholder="ISX-FRIEND-CODE"><input class="isx-input" id="isx-find-name" readonly style="margin-top:8px" placeholder="PLAYER NAME"><div id="isx-find-status" class="isx-note">Enter a valid code.</div><div class="isx-row"><button class="action" id="isx-send-request">SEND REQUEST</button></div></div>';
+        body='<div class="isx-card"><b>FIND PEOPLE</b><p>Enter a 9-character Friend Code. Sending a request does NOT add the player immediately.</p><input class="isx-input" id="isx-find-code" maxlength="9" placeholder="9-CHAR FRIEND CODE"><input class="isx-input" id="isx-find-name" readonly style="margin-top:8px" placeholder="PLAYER NAME"><div id="isx-find-status" class="isx-note">Enter a valid 9-character code.</div><div class="isx-row"><button class="action" id="isx-send-request">SEND REQUEST</button></div></div>';
       }
       overlay('<h2>FRIENDS</h2><div class="isx-row" style="margin-top:0">'+
         tabButton('isx-tab-friends','FRIENDS',mode==='friends')+
-        tabButton('isx-tab-pending','PENDING REQUESTS'+(data.social.pending.length?' ('+data.social.pending.length+')':''),mode==='pending')+
+        tabButton('isx-tab-pending','PENDING REQUESTS'+((data.social.pending.length+data.social.requests.length+data.social.outgoing.length)?' ('+(data.social.pending.length+data.social.requests.length+data.social.outgoing.length)+')':''),mode==='pending')+
         tabButton('isx-tab-find','FIND PEOPLE',mode==='find')+
         tabButton('isx-tab-gifts','GIFTS',mode==='gifts')+
         '</div>'+body+'<div class="isx-row"><button class="ghost" id="isx-friend-close">CLOSE</button></div>');
@@ -1977,32 +2036,33 @@ button{touch-action:manipulation}
       if(mode==='find'){
         var ce=document.getElementById('isx-find-code'),ne=document.getElementById('isx-find-name'),st=document.getElementById('isx-find-status');
         ce.oninput=function(){
-          var n=decodeFriendCode(ce.value.trim());ne.value=n;
-          st.textContent=n?(n===profile.nickname?'That is your own code.':'PLAYER FOUND • REQUEST READY'):'Code not recognized.';
+          ce.value=ce.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,9);
+          var n=decodeFriendCode(ce.value);ne.value=n;
+          st.textContent=n?(n===profile.nickname?'That is your own code.':'PLAYER FOUND • REQUEST READY'):'Code not recognized on this standalone copy.';
         };
         document.getElementById('isx-send-request').onclick=function(){
-          var code=ce.value.trim(),n=decodeFriendCode(code);
-          if(!n||n===profile.nickname){st.textContent='Enter another player’s valid Friend Code.';return}
+          var code=ce.value.trim().toUpperCase(),n=decodeFriendCode(code);
+          if(!/^[A-Z0-9]{9}$/.test(code)||!n||n===profile.nickname){st.textContent='Enter another player’s valid 9-character Friend Code.';return}
           if(friends.some(function(f){return f.code===code})){st.textContent='Already friends.';return}
-          if(!data.social.pending.some(function(r){return r.code===code})){
-            data.social.pending.push({code:code,nickname:n});
-            save();
-          }
-          st.textContent='FRIEND REQUEST PENDING • '+n;
+          if(data.social.outgoing.some(function(r){return r.code===code})){st.textContent='REQUEST ALREADY SENT.';return}
+          if(data.social.requests.some(function(r){return r.code===code})){st.textContent='This player already sent you a request.';return}
+          data.social.outgoing.push({code:code,nickname:n,at:Date.now(),status:'sent'});
+          save();
+          st.textContent='FRIEND REQUEST SENT • '+n;
           render('pending');
         };
       }else if(mode==='friends'){
         document.querySelectorAll('[data-rm]').forEach(function(b){b.onclick=function(){friends.splice(Number(b.dataset.rm),1);save();render('friends')}});
         document.querySelectorAll('[data-chat]').forEach(function(b){b.onclick=function(){chatView(friends[Number(b.dataset.chat)])}});
         document.querySelectorAll('[data-gift]').forEach(function(b){b.onclick=function(){giftView(friends[Number(b.dataset.gift)])}});
-        
-      }else{
+      }else if(mode==='pending'){
         document.querySelectorAll('[data-accept]').forEach(function(b){b.onclick=function(){
-          var r=data.social.pending.splice(Number(b.dataset.accept),1)[0];
+          var r=data.social.requests.splice(Number(b.dataset.accept),1)[0];
           if(r&&!friends.some(function(f){return f.code===r.code}))friends.push({code:r.code,nickname:r.nickname});
           save();render('friends');
         }});
-        document.querySelectorAll('[data-decline]').forEach(function(b){b.onclick=function(){data.social.pending.splice(Number(b.dataset.decline),1);save();render('pending')}});
+        document.querySelectorAll('[data-decline]').forEach(function(b){b.onclick=function(){data.social.requests.splice(Number(b.dataset.decline),1);save();render('pending')}});
+        document.querySelectorAll('[data-cancel]').forEach(function(b){b.onclick=function(){data.social.outgoing.splice(Number(b.dataset.cancel),1);save();render('pending')}});
       }
     }
     render('friends');
@@ -2010,7 +2070,9 @@ button{touch-action:manipulation}
 
   function chatView(friend){
     if(!friend)return;
-    data.social=data.social||{pending:[],requests:[],messages:{},gifts:[]};
+    data.social=data.social||{pending:[],requests:[],outgoing:[],messages:{},gifts:[]};
+    if(!friends.some(function(f){return (f.code||f.friendCode)===(friend.code||friend.friendCode)}))return;
+
     var key=friend.code||friend.nickname;
     var msgs=Array.isArray(data.social.messages[key])?data.social.messages[key]:[];
     var rows=msgs.length?msgs.map(function(m){return '<div class="isx-card"><b>'+esc(m.from)+'</b><div style="margin-top:4px;color:#dce8f5">'+esc(m.text)+'</div></div>'}).join(''):'<div class="isx-note">No messages yet.</div>';
@@ -2028,7 +2090,7 @@ button{touch-action:manipulation}
     if(!friend)return;
     var owned=data.skins.owned.filter(function(id){return id!=='default'});
     var opts='<option value="">SELECT SKIN</option>'+owned.map(function(id){var s=SKINS.find(function(x){return x.id===id});return s?'<option value="'+esc(id)+'">'+esc(s.name)+'</option>':''}).join('');
-    overlay('<h2>GIFT • '+esc(friend.nickname)+'</h2><div class="isx-note">Gift actions are saved to your local gift history. True cross-device delivery requires an online account/server.</div><div class="isx-card"><b>COINS</b><input class="isx-input" id="isx-gift-coins" type="number" min="0" max="'+Math.floor(data.coins)+'" value="0" style="margin-top:8px"><div class="isx-row"><button class="action" id="isx-send-coins">GIFT COINS</button></div></div><div class="isx-card" style="margin-top:10px"><b>SKIN</b><select class="isx-input" id="isx-gift-skin" style="margin-top:8px">'+opts+'</select><div class="isx-row"><button class="action" id="isx-send-skin">GIFT SKIN</button></div></div><div class="isx-row"><button class="ghost" id="isx-gift-close">CLOSE</button></div>');
+    overlay('<h2>GIFT • '+esc(friend.nickname)+'</h2><div class="isx-note">Gifts work for accepted friends and are saved in your gift history. Cross-device delivery requires the optional online server.</div><div class="isx-card"><b>COINS</b><input class="isx-input" id="isx-gift-coins" type="number" min="0" max="'+Math.floor(data.coins)+'" value="0" style="margin-top:8px"><div class="isx-row"><button class="action" id="isx-send-coins">GIFT COINS</button></div></div><div class="isx-card" style="margin-top:10px"><b>SKIN</b><select class="isx-input" id="isx-gift-skin" style="margin-top:8px">'+opts+'</select><div class="isx-row"><button class="action" id="isx-send-skin">GIFT SKIN</button></div></div><div class="isx-row"><button class="ghost" id="isx-gift-close">CLOSE</button></div>');
     document.getElementById('isx-gift-close').onclick=closeOverlay;
     document.getElementById('isx-send-coins').onclick=function(){
       var amount=Math.floor(Number(document.getElementById('isx-gift-coins').value)||0);
@@ -2255,19 +2317,22 @@ button{touch-action:manipulation}
     return true;
   };
   function duelView(){
-    overlay('<h2>DUELS</h2><p>Enter a duel code to start immediately. There is no START button. Each player gets 3 deaths; the first to reach 3 loses.</p><div class="isx-card"><b>CREATE DUEL</b><div class="isx-row"><button class="action" id="isx-duel-create">CREATE CODE</button></div><div id="isx-duel-created" class="isx-note"></div></div><div class="isx-card" style="margin-top:10px"><b>ENTER CODE</b><input class="isx-input" id="isx-duel-join" maxlength="120" placeholder="ISD-DUEL-CODE" style="margin-top:8px"><div class="isx-note">Entering a valid code starts the duel automatically.</div></div><div id="isx-duel-status" class="isx-note"></div><div class="isx-row"><button class="ghost" id="isx-duel-close">CLOSE</button></div>');
+    overlay('<h2>DUELS</h2><p>Duel codes are exactly 9 characters. Create a code, share it, then the other player enters it. There is no accidental ACCEPT/CANCEL step.</p><div class="isx-card"><b>CREATE DUEL</b><div class="isx-row"><button class="action" id="isx-duel-create">CREATE 9-CHAR CODE</button></div><div id="isx-duel-created" class="isx-note"></div></div><div class="isx-card" style="margin-top:10px"><b>JOIN DUEL</b><input class="isx-input" id="isx-duel-join" maxlength="9" placeholder="9-CHAR DUEL CODE" style="margin-top:8px"><div class="isx-note">Enter all 9 characters. A valid local duel starts automatically.</div></div><div id="isx-duel-status" class="isx-note"></div><div class="isx-row"><button class="ghost" id="isx-duel-close">CLOSE</button></div>');
     document.getElementById('isx-duel-close').onclick=closeOverlay;
     document.getElementById('isx-duel-create').onclick=function(){
       if(!profilePrompt())return;
       var seed='DUEL-'+Date.now().toString(36).toUpperCase()+'-'+hash(profile.nickname+'|'+Date.now()).slice(0,6);
       duel.code=duelCode(profile.nickname,seed);
-      document.getElementById('isx-duel-created').innerHTML='<b>YOUR CODE</b><div class="isx-code" style="font-size:13px;word-break:break-all">'+esc(duel.code)+'</div><p>Share this code. Your friend only needs to enter it.</p>';
+      document.getElementById('isx-duel-created').innerHTML='<b>YOUR 9-CHAR CODE</b><div class="isx-code" style="font-size:20px;word-break:break-all">'+esc(duel.code)+'</div><p>Share exactly these 9 characters with your friend.</p>';
     };
     var join=document.getElementById('isx-duel-join');
     join.oninput=function(){
+      join.value=join.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,9);
       var d=decodeDuelCode(join.value);
       var st=document.getElementById('isx-duel-status');
-      if(!d){st.textContent='';return}
+      if(join.value.length<9){st.textContent='';return}
+      if(!d){st.textContent='DUEL CODE NOT FOUND ON THIS COPY.';return}
+      if(d.nickname===profile.nickname){st.textContent='You cannot join your own duel.';return}
       st.textContent='DUEL FOUND • '+d.nickname+' • STARTING...';
       closeOverlay();setTimeout(function(){startDuel(d.seed,d.nickname)},120);
     };
